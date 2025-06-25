@@ -15,7 +15,6 @@ import { db } from './firebase';
 import Sidebar from './components/Sidebar';
 import StudentModal from './components/StudentModal';
 import LessonModal from './components/LessonModal';
-import PackageModal from './components/PackageModal';
 import NotificationPanel from './components/NotificationPanel';
 
 const locales = {
@@ -37,12 +36,9 @@ function App() {
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [showStudentModal, setShowStudentModal] = useState(false);
   const [showLessonModal, setShowLessonModal] = useState(false);
-  const [showPackageModal, setShowPackageModal] = useState(false);
   const [events, setEvents] = useState([]);
   const [students, setStudents] = useState([]);
-  const [packages, setPackages] = useState([]);
   const [editingStudent, setEditingStudent] = useState(null);
-  const [editingPackage, setEditingPackage] = useState(null);
 
   // 1년 범위 계산
   const minDate = startOfMonth(new Date());
@@ -61,14 +57,6 @@ function App() {
         ...doc.data()
       }));
       setStudents(studentsData);
-
-      // 패키지 데이터 로드
-      const packagesSnapshot = await getDocs(collection(db, 'packages'));
-      const packagesData = packagesSnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      setPackages(packagesData);
 
       // 레슨 데이터 로드
       const lessonsSnapshot = await getDocs(collection(db, 'lessons'));
@@ -94,63 +82,32 @@ function App() {
     setShowLessonModal(true);
   };
 
-  const handleSaveStudent = async (studentData) => {
+  const handleSaveStudent = async () => {
     try {
-      if (editingStudent) {
-        await updateDoc(doc(db, 'students', editingStudent.id), studentData);
-      } else {
-        await addDoc(collection(db, 'students'), studentData);
-      }
       await loadData();
       setShowStudentModal(false);
       setEditingStudent(null);
     } catch (error) {
-      console.error('Error saving student:', error);
-      alert('학생 정보 저장 중 오류가 발생했습니다.');
+      console.error('Error handling student save:', error);
+      alert('학생 정보를 갱신하는 중 오류가 발생했습니다.');
     }
   };
 
-  const handleSavePackage = async (packageData) => {
+  const handleSaveLesson = async () => {
     try {
-      if (editingPackage) {
-        await updateDoc(doc(db, 'packages', editingPackage.id), packageData);
-      } else {
-        await addDoc(collection(db, 'packages'), packageData);
-      }
-      await loadData();
-      setShowPackageModal(false);
-      setEditingPackage(null);
-    } catch (error) {
-      console.error('Error saving package:', error);
-      alert('패키지 정보 저장 중 오류가 발생했습니다.');
-    }
-  };
-
-  const handleSaveLesson = async (lessonData) => {
-    try {
-      if (selectedEvent) {
-        await updateDoc(doc(db, 'lessons', selectedEvent.id), lessonData);
-      } else {
-        await addDoc(collection(db, 'lessons'), lessonData);
-      }
       await loadData();
       setShowLessonModal(false);
       setSelectedSlot(null);
       setSelectedEvent(null);
     } catch (error) {
-      console.error('Error saving lesson:', error);
-      alert('레슨 정보 저장 중 오류가 발생했습니다.');
+      console.error('Error handling lesson save:', error);
+      alert('레슨 정보를 갱신하는 중 오류가 발생했습니다.');
     }
   };
 
   const handleEditStudent = (student) => {
     setEditingStudent(student);
     setShowStudentModal(true);
-  };
-
-  const handleEditPackage = (packageData) => {
-    setEditingPackage(packageData);
-    setShowPackageModal(true);
   };
 
   const handleDeleteStudent = async (studentId) => {
@@ -165,35 +122,16 @@ function App() {
     }
   };
 
-  const handleDeletePackage = async (packageId) => {
-    if (window.confirm('정말로 이 패키지를 삭제하시겠습니까?')) {
-      try {
-        await deleteDoc(doc(db, 'packages', packageId));
-        await loadData();
-      } catch (error) {
-        console.error('Error deleting package:', error);
-        alert('패키지 삭제 중 오류가 발생했습니다.');
-      }
-    }
-  };
-
   return (
     <div className="app">
       <Sidebar 
         students={students}
-        packages={packages}
         onAddStudent={() => {
           setEditingStudent(null);
           setShowStudentModal(true);
         }}
-        onAddPackage={() => {
-          setEditingPackage(null);
-          setShowPackageModal(true);
-        }}
         onEditStudent={handleEditStudent}
-        onEditPackage={handleEditPackage}
         onDeleteStudent={handleDeleteStudent}
-        onDeletePackage={handleDeletePackage}
       />
       
       <div className="main-content">
@@ -271,17 +209,6 @@ function App() {
             setSelectedEvent(null);
           }}
           onSave={handleSaveLesson}
-        />
-      )}
-
-      {showPackageModal && (
-        <PackageModal 
-          packageData={editingPackage}
-          onClose={() => {
-            setShowPackageModal(false);
-            setEditingPackage(null);
-          }}
-          onSave={handleSavePackage}
         />
       )}
     </div>

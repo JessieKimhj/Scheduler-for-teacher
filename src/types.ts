@@ -2,31 +2,19 @@
 export interface Student {
   id: string;
   name: string;
-  phone: string;
-  email?: string;
-  frequency: 'weekly' | 'biweekly'; // 매주/격주
-  lessonType: '1:1' | '1:2'; // 1:1 또는 1:2 레슨
-  createdAt: Date;
-  updatedAt: Date;
-}
-
-export interface Package {
-  id: string;
-  studentId: string;
-  name: string; // 예: "4회 패키지", "8회 패키지"
+  frequency: 'weekly' | 'biweekly' | 'flexible';
+  lessonType: 'vocal' | 'guitar' | 'guitar+vocal';
   totalLessons: number;
   remainingLessons: number;
-  price: number;
-  startDate: Date;
-  endDate?: Date;
-  isActive: boolean;
+  packagePrice?: number;
+  memo?: string;
   createdAt: Date;
+  updatedAt: Date;
 }
 
 export interface Lesson {
   id: string;
   studentId: string;
-  packageId: string;
   title: string;
   start: Date;
   end: Date;

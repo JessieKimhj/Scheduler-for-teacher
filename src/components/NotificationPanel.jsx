@@ -9,99 +9,84 @@ const NotificationPanel = () => {
   const [unreadCount, setUnreadCount] = useState(0);
 
   useEffect(() => {
-    loadNotifications();
-    // 5분마다 알림 새로고침
-    const interval = setInterval(loadNotifications, 5 * 60 * 1000);
-    return () => clearInterval(interval);
-  }, []);
+    const loadAndSetNotifications = async () => {
+      if (isOpen) {
+        await loadNotifications();
+      }
+    };
+    loadAndSetNotifications();
+  }, [isOpen]);
 
   const loadNotifications = async () => {
     try {
-      // 패키지 정보 로드
-      const packagesQuery = query(
-        collection(db, 'packages'),
-        where('isActive', '==', true)
+      const studentsQuery = query(
+        collection(db, 'students'),
+        where('remainingLessons', '<=', 2)
       );
-      const packagesSnapshot = await getDocs(packagesQuery);
-      const packages = packagesSnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-
-      // 학생 정보 로드
-      const studentsSnapshot = await getDocs(collection(db, 'students'));
-      const students = studentsSnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-
-      // 알림 생성
+      const studentsSnapshot = await getDocs(studentsQuery);
+      
       const newNotifications = [];
-
-      // 패키지 만료 알림 (2회 이하 남은 경우)
-      packages.forEach(pkg => {
-        if (pkg.remainingLessons <= 2) {
-          const student = students.find(s => s.id === pkg.studentId);
-          if (student) {
-            newNotifications.push({
-              id: `package-${pkg.id}`,
-              type: 'package-expiring',
-              title: '패키지 만료 예정',
-              message: `${student.name}님의 ${pkg.name}이 곧 만료됩니다. (${pkg.remainingLessons}회 남음)`,
-              student: student,
-              package: pkg,
-              timestamp: new Date(),
-              isRead: false
-            });
-          }
+      studentsSnapshot.forEach(doc => {
+        const student = { id: doc.id, ...doc.data() };
+        
+        if (student.remainingLessons > 0) {
+          // 1회 또는 2회 남은 경우
+          newNotifications.push({
+            id: `student-expiring-${student.id}`,
+            type: 'package-expiring',
+            title: '수업권 만료 예정',
+            message: `${student.name}님의 남은 수업이 ${student.remainingLessons}회 입니다.`,
+            student: student,
+            timestamp: new Date(),
+            isRead: false,
+          });
+        } else {
+          // 0회 남은 경우
+          newNotifications.push({
+            id: `student-empty-${student.id}`,
+            type: 'package-empty',
+            title: '수업권 소진',
+            message: `${student.name}님의 수업권이 모두 소진되었습니다. 갱신이 필요합니다.`,
+            student: student,
+            timestamp: new Date(),
+            isRead: false,
+          });
         }
       });
-
-      // 패키지 완전 소진 알림 (0회 남은 경우)
-      packages.forEach(pkg => {
-        if (pkg.remainingLessons === 0) {
-          const student = students.find(s => s.id === pkg.studentId);
-          if (student) {
-            newNotifications.push({
-              id: `package-empty-${pkg.id}`,
-              type: 'package-empty',
-              title: '패키지 소진',
-              message: `${student.name}님의 ${pkg.name}이 모두 소진되었습니다. 결제가 필요합니다.`,
-              student: student,
-              package: pkg,
-              timestamp: new Date(),
-              isRead: false
-            });
-          }
-        }
-      });
-
-      setNotifications(newNotifications);
+      
+      setNotifications(newNotifications.sort((a, b) => b.timestamp - a.timestamp));
       setUnreadCount(newNotifications.filter(n => !n.isRead).length);
     } catch (error) {
       console.error('Error loading notifications:', error);
     }
   };
 
+  const handleToggle = () => {
+    setIsOpen(prev => !prev);
+  };
+
   const markAsRead = (notificationId) => {
-    setNotifications(prev => 
-      prev.map(notification => 
-        notification.id === notificationId 
-          ? { ...notification, isRead: true }
-          : notification
-      )
+    const newNotifications = notifications.map(n => 
+      n.id === notificationId ? { ...n, isRead: true } : n
     );
-    setUnreadCount(prev => Math.max(0, prev - 1));
+    setNotifications(newNotifications);
+    setUnreadCount(newNotifications.filter(n => !n.isRead).length);
+  };
+
+  const markAllAsRead = () => {
+    const newNotifications = notifications.map(n => ({ ...n, isRead: true }));
+    setNotifications(newNotifications);
+    setUnreadCount(0);
   };
 
   const getNotificationIcon = (type) => {
     switch (type) {
       case 'package-expiring':
-        return <AlertTriangle size={16} className="text-yellow-500" />;
+        return <AlertTriangle size={20} className="notification-icon" />;
       case 'package-empty':
-        return <DollarSign size={16} className="text-red-500" />;
+        return <DollarSign size={20} className="notification-icon" />;
       default:
-        return <Bell size={16} />;
+        return <Bell size={20} className="notification-icon" />;
     }
   };
 
@@ -118,69 +103,47 @@ const NotificationPanel = () => {
 
   return (
     <div className="notification-panel">
-      <button 
-        className="notification-toggle"
-        onClick={() => setIsOpen(!isOpen)}
-      >
-        <Bell size={20} />
+      <div className="notification-toggle" onClick={handleToggle}>
+        <Bell size={24} color="#8f5fe8" />
         {unreadCount > 0 && (
-          <span className="notification-badge">{unreadCount}</span>
+          <div className="notification-badge">{unreadCount}</div>
         )}
-      </button>
+      </div>
 
       {isOpen && (
         <div className="notification-dropdown">
           <div className="notification-header">
             <h3>알림</h3>
-            <button 
-              className="close-notifications"
-              onClick={() => setIsOpen(false)}
-            >
-              <X size={16} />
+            <button className="close-notifications" onClick={handleToggle}>
+              <X size={20} />
             </button>
           </div>
-
           <div className="notifications-list">
-            {notifications.length === 0 ? (
-              <div className="no-notifications">
-                <p>새로운 알림이 없습니다</p>
-              </div>
-            ) : (
-              notifications.map(notification => (
+            {notifications.length > 0 ? (
+              notifications.map(n => (
                 <div 
-                  key={notification.id}
-                  className={`notification-item ${getNotificationClass(notification.type)} ${!notification.isRead ? 'unread' : ''}`}
-                  onClick={() => markAsRead(notification.id)}
+                  key={n.id} 
+                  className={`notification-item ${!n.isRead ? 'unread' : ''} ${getNotificationClass(n.type)}`}
+                  onClick={() => markAsRead(n.id)}
                 >
-                  <div className="notification-icon">
-                    {getNotificationIcon(notification.type)}
-                  </div>
+                  {getNotificationIcon(n.type)}
                   <div className="notification-content">
-                    <h4>{notification.title}</h4>
-                    <p>{notification.message}</p>
-                    <small>
-                      {notification.timestamp.toLocaleString('ko-KR')}
-                    </small>
+                    <h4>{n.title}</h4>
+                    <p>{n.message}</p>
+                    <small>{new Date(n.timestamp).toLocaleString()}</small>
                   </div>
-                  {!notification.isRead && (
-                    <div className="unread-indicator" />
-                  )}
+                  {!n.isRead && <div className="unread-indicator"></div>}
                 </div>
               ))
+            ) : (
+              <div className="no-notifications">
+                <p>새로운 알림이 없습니다.</p>
+              </div>
             )}
           </div>
-
           {notifications.length > 0 && (
             <div className="notification-footer">
-              <button 
-                className="mark-all-read"
-                onClick={() => {
-                  setNotifications(prev => 
-                    prev.map(n => ({ ...n, isRead: true }))
-                  );
-                  setUnreadCount(0);
-                }}
-              >
+              <button className="mark-all-read" onClick={markAllAsRead}>
                 모두 읽음으로 표시
               </button>
             </div>

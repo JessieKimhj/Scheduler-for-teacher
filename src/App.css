@@ -143,6 +143,7 @@ body {
 .student-packages {
   margin-top: 8px;
   display: flex;
+  flex-direction: column;
   gap: 8px;
   flex-wrap: wrap;
 }
@@ -371,14 +372,59 @@ body {
   padding: 20px;
 }
 
-.form-group {
+.modal-form .form-group {
   margin-bottom: 20px;
 }
 
-.form-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16px;
+.lesson-time-row {
+  display: flex;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.lesson-time-day {
+  margin-right: 8px;
+  flex: 1;
+}
+
+.lesson-time-input {
+  flex: 2;
+  margin-right: 8px;
+}
+
+.remove-time-button, .add-time-button {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: background-color 0.2s ease;
+}
+
+.remove-time-button {
+  color: #a38d7a;
+}
+
+.remove-time-button:hover {
+  background-color: #e9e4df;
+  color: #795548;
+}
+
+.add-time-button {
+  width: 100%;
+  padding: 8px;
+  border: 1px dashed #d6cfc7;
+  color: #8b7969;
+  font-weight: 500;
+  margin-top: 10px;
+}
+
+.add-time-button:hover {
+  background-color: #f7f5f3;
+  border-color: #b8a99a;
 }
 
 .form-group label {
@@ -686,4 +732,32 @@ body {
     width: 300px;
     right: -50px;
   }
+}
+
+.lesson-times-display {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.time-tag {
+  background-color: #e9e4df;
+  color: #8b7969;
+  padding: 3px 8px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.readonly-input {
+  background-color: #f0f0f0 !important;
+  color: #555 !important;
+  cursor: not-allowed;
 }
