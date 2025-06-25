@@ -8,7 +8,8 @@ const StudentModal = ({ student, onClose, onSave }) => {
     name: '',
     frequency: 'weekly',
     lessonType: '1:1',
-    totalLessons: ''
+    totalLessons: '',
+    packagePrice: ''
   });
 
   useEffect(() => {
@@ -17,7 +18,8 @@ const StudentModal = ({ student, onClose, onSave }) => {
         name: student.name || '',
         frequency: student.frequency || 'weekly',
         lessonType: student.lessonType || '1:1',
-        totalLessons: student.totalLessons || ''
+        totalLessons: student.totalLessons || '',
+        packagePrice: student.packagePrice || ''
       });
     }
   }, [student]);
@@ -84,8 +86,9 @@ const StudentModal = ({ student, onClose, onSave }) => {
               onChange={handleChange}
               required
             >
-              <option value="1:1">1:1 레슨</option>
-              <option value="1:2">1:2 레슨</option>
+              <option value="vocal">보컬</option>
+              <option value="guitar">기타</option>
+              <option value="guitar+vocal">기타 + 보컬</option>
             </select>
           </div>
 
@@ -104,7 +107,7 @@ const StudentModal = ({ student, onClose, onSave }) => {
           </div>
 
           <div className="form-group">
-            <label htmlFor="totalLessons">수업 패키지 횟수 *</label>
+            <label htmlFor="totalLessons">수업 패키지 *</label>
             <input
               type="number"
               id="totalLessons"
@@ -114,6 +117,19 @@ const StudentModal = ({ student, onClose, onSave }) => {
               min="1"
               required
               placeholder="예: 4, 8, 12"
+            />
+          </div>
+
+          <div className="form-group">
+            <label htmlFor="packagePrice">수강료</label>
+            <input
+              type="number"
+              id="packagePrice"
+              name="packagePrice"
+              value={formData.packagePrice || ''}
+              onChange={handleChange}
+              min="0"
+              placeholder="예: 200000"
             />
           </div>
 
