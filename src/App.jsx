@@ -5,7 +5,7 @@ import parse from 'date-fns/parse';
 import startOfWeek from 'date-fns/startOfWeek';
 import getDay from 'date-fns/getDay';
 import ko from 'date-fns/locale/ko';
-import { addMonths, startOfMonth, endOfMonth } from 'date-fns';
+import { addMonths, startOfMonth, endOfMonth, setHours, setMinutes } from 'date-fns';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
 import './App.css';
 
@@ -28,6 +28,16 @@ const localizer = dateFnsLocalizer({
   getDay,
   locales,
 });
+
+// 오늘 날짜 기준 특정 시각 Date 객체 반환
+function getTodayWithTime(hour, minute = 0) {
+  return new Date(
+    new Date().getFullYear(),
+    new Date().getMonth(),
+    new Date().getDate(),
+    hour, minute, 0, 0
+  );
+}
 
 function App() {
   const [view, setView] = useState('week');
@@ -167,11 +177,15 @@ function App() {
             onSelectSlot={handleSelectSlot}
             onSelectEvent={handleSelectEvent}
             selectable
-            min={minDate}
-            max={maxDate}
+            min={new Date(2025, 0, 1, 8, 0)}    // 하루 중 표시 시작 시간: 오전 8시
+            max={new Date(2025, 0, 1, 22, 0)}   // 하루 중 표시 종료 시간: 오후 10시
+            minDate={minDate}              
+            maxDate={maxDate}                    
+            step={30}
+            timeslots={2}
             messages={{
-              next: "다음",
-              previous: "이전",
+              next: ">",
+              previous: "<",
               today: "오늘",
               month: "월",
               week: "주",

@@ -9,6 +9,21 @@ const Sidebar = ({
 }) => {
   const [activeTab, setActiveTab] = useState('students');
 
+  const getFrequencyText = (frequency) => {
+    switch (frequency) {
+      case 'weekly-1':
+        return '주 1회';
+      case 'weekly-2':
+        return '주 2회';
+      case 'biweekly':
+        return '격주';
+      case 'flexible':
+        return '유동적';
+      default:
+        return frequency || '미설정';
+    }
+  };
+
   return (
     <div className="sidebar">
       <div className="sidebar-header">
@@ -46,7 +61,7 @@ const Sidebar = ({
                 <div key={student.id} className="student-item">
                   <div className="student-info">
                     <h4>{student.name}</h4>
-                    <p>{student.lessonType} • {student.frequency === 'weekly' ? '매주' : '격주'}</p>
+                    <p>{student.lessonType} • {getFrequencyText(student.frequency)}</p>
                     <div className="lesson-times-display">
                       {student.lessonTimes && student.lessonTimes.map((lt, index) => (
                         <span key={index} className="time-tag">{lt.day} {lt.time}</span>

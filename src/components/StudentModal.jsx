@@ -8,6 +8,7 @@ const StudentModal = ({ student, onClose, onSave }) => {
     name: '',
     frequency: 'weekly-1',
     lessonType: 'vocal',
+    lessonDuration: 50,
     totalLessons: '',
     packagePrice: '',
     memo: ''
@@ -21,6 +22,7 @@ const StudentModal = ({ student, onClose, onSave }) => {
         name: student.name || '',
         frequency: student.frequency || 'weekly-1',
         lessonType: student.lessonType || 'vocal',
+        lessonDuration: student.lessonDuration || 50,
         totalLessons: student.totalLessons || '',
         packagePrice: student.packagePrice || '',
         memo: student.memo || ''
@@ -41,6 +43,7 @@ const StudentModal = ({ student, onClose, onSave }) => {
       const studentData = {
         ...formData,
         lessonTimes: finalLessonTimes,
+        lessonDuration: parseInt(formData.lessonDuration, 10),
         totalLessons: parseInt(formData.totalLessons),
         remainingLessons: parseInt(formData.totalLessons),
         packagePrice: formData.packagePrice ? parseInt(formData.packagePrice) : 0,
@@ -94,6 +97,25 @@ const StudentModal = ({ student, onClose, onSave }) => {
   };
 
   const weekDays = ['월', '화', '수', '목', '금', '토', '일'];
+
+  // Generate time options from 09:00 to 22:00 in 10-minute increments
+  const getTimeOptions = () => {
+    const options = [];
+    let hour = 9;
+    let minute = 0;
+    while (hour < 22 || (hour === 22 && minute === 0)) {
+      const h = hour.toString().padStart(2, '0');
+      const m = minute.toString().padStart(2, '0');
+      options.push(`${h}:${m}`);
+      minute += 10;
+      if (minute === 60) {
+        minute = 0;
+        hour++;
+      }
+    }
+    return options;
+  };
+  const timeOptions = getTimeOptions();
 
   return (
     <div className="modal-overlay">
@@ -152,6 +174,19 @@ const StudentModal = ({ student, onClose, onSave }) => {
 
           <div className="form-group">
             <label htmlFor="lessonTime">수업 시간</label>
+            <select
+              id="lessonDuration"
+              name="lessonDuration"
+              value={formData.lessonDuration}
+              onChange={handleChange}
+              required
+              className="lesson-duration-select lesson-duration-block"
+            >
+              <option value="30">30분</option>
+              <option value="50">50분</option>
+              <option value="80">80분</option>
+              <option value="100">100분</option>
+            </select>
             {lessonTimes.map((item, index) => (
               <div key={index} className="lesson-time-row">
                 <select
@@ -161,12 +196,16 @@ const StudentModal = ({ student, onClose, onSave }) => {
                 >
                   {weekDays.map(day => <option key={day} value={day}>{day}</option>)}
                 </select>
-                <input
-                  type="time"
+                <select
                   value={item.time}
                   onChange={(e) => handleTimeChange(index, 'time', e.target.value)}
                   className="lesson-time-input"
-                />
+                >
+                  <option value="">시간 선택</option>
+                  {timeOptions.map((t) => (
+                    <option key={t} value={t}>{t}</option>
+                  ))}
+                </select>
                 <button type="button" onClick={() => removeLessonTime(index)} className="remove-time-button">
                   <Trash2 size={16} />
                 </button>
