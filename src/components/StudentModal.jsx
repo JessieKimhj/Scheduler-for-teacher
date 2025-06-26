@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, Plus, Trash2 } from 'lucide-react';
-import { addDoc, updateDoc, doc, collection } from 'firebase/firestore';
+import { addDoc, updateDoc, doc, collection, writeBatch, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
 
 const StudentModal = ({ student, onClose, onSave }) => {
@@ -35,6 +35,63 @@ const StudentModal = ({ student, onClose, onSave }) => {
     }
   }, [student]);
 
+  // 레슨 일정 자동 생성 함수
+  const generateLessonEvents = (studentData, studentId) => {
+    const events = [];
+    const { lessonTimes, totalLessons, lessonDuration, frequency, name } = studentData;
+    
+    if (!lessonTimes || lessonTimes.length === 0) return events;
+    
+    // 주간 빈도에 따른 주차 간격 계산
+    let weekInterval = 1;
+    if (frequency === 'biweekly') {
+      weekInterval = 2;
+    } else if (frequency === 'flexible') {
+      weekInterval = 1; // 유동적이지만 기본 1주
+    }
+    
+    // 각 수업 시간에 대해 레슨 생성
+    lessonTimes.forEach((lessonTime, timeIndex) => {
+      if (!lessonTime.time) return; // 시간이 선택되지 않은 경우 스킵
+      
+      const [hours, minutes] = lessonTime.time.split(':').map(Number);
+      const dayOfWeek = ['월', '화', '수', '목', '금', '토', '일'].indexOf(lessonTime.day);
+      
+      // 오늘부터 시작해서 해당 요일의 첫 번째 날짜 찾기
+      const today = new Date();
+      const startDate = new Date(today);
+      const currentDay = today.getDay();
+      const targetDay = dayOfWeek === 0 ? 0 : dayOfWeek; // 월요일 = 0
+      
+      let daysToAdd = targetDay - currentDay;
+      if (daysToAdd <= 0) daysToAdd += 7;
+      
+      startDate.setDate(today.getDate() + daysToAdd);
+      startDate.setHours(hours, minutes, 0, 0);
+      
+      // 총 수업 횟수만큼 레슨 생성
+      for (let i = 0; i < totalLessons; i++) {
+        const lessonDate = new Date(startDate);
+        lessonDate.setDate(startDate.getDate() + (i * weekInterval * 7));
+        
+        const endDate = new Date(lessonDate);
+        endDate.setMinutes(lessonDate.getMinutes() + lessonDuration);
+        
+        events.push({
+          studentId: studentId,
+          title: `${name} 레슨`,
+          start: lessonDate,
+          end: endDate,
+          status: 'scheduled',
+          createdAt: new Date(),
+          updatedAt: new Date()
+        });
+      }
+    });
+    
+    return events;
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setIsSubmitting(true);
@@ -50,11 +107,43 @@ const StudentModal = ({ student, onClose, onSave }) => {
         createdAt: student ? student.createdAt : new Date(),
         updatedAt: new Date()
       };
+      
+      // 배치 작업으로 학생과 레슨을 함께 저장
+      const batch = writeBatch(db);
+      
       if (student) {
-        await updateDoc(doc(db, 'students', student.id), studentData);
+        const studentRef = doc(db, 'students', student.id);
+        batch.update(studentRef, studentData);
+        
+        // 기존 레슨 삭제 후 새로 생성
+        const existingLessonsQuery = await getDocs(collection(db, 'lessons'));
+        existingLessonsQuery.docs.forEach(doc => {
+          if (doc.data().studentId === student.id) {
+            batch.delete(doc.ref);
+          }
+        });
+        
+        // 새 레슨 생성
+        const newLessons = generateLessonEvents(studentData, student.id);
+        console.log('Generated lessons for existing student:', newLessons);
+        newLessons.forEach(lesson => {
+          const lessonRef = doc(collection(db, 'lessons'));
+          batch.set(lessonRef, lesson);
+        });
       } else {
-        await addDoc(collection(db, 'students'), studentData);
+        const studentRef = doc(collection(db, 'students'));
+        batch.set(studentRef, studentData);
+        
+        // 새 레슨 생성
+        const newLessons = generateLessonEvents(studentData, studentRef.id);
+        console.log('Generated lessons for new student:', newLessons);
+        newLessons.forEach(lesson => {
+          const lessonRef = doc(collection(db, 'lessons'));
+          batch.set(lessonRef, lesson);
+        });
       }
+      
+      await batch.commit();
       onSave(studentData);
     } catch (error) {
       console.error('Error saving student:', error);

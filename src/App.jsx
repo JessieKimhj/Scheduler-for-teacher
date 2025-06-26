@@ -5,7 +5,6 @@ import parse from 'date-fns/parse';
 import startOfWeek from 'date-fns/startOfWeek';
 import getDay from 'date-fns/getDay';
 import ko from 'date-fns/locale/ko';
-import { addMonths, startOfMonth, endOfMonth, setHours, setMinutes } from 'date-fns';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
 import './App.css';
 
@@ -29,16 +28,6 @@ const localizer = dateFnsLocalizer({
   locales,
 });
 
-// 오늘 날짜 기준 특정 시각 Date 객체 반환
-function getTodayWithTime(hour, minute = 0) {
-  return new Date(
-    new Date().getFullYear(),
-    new Date().getMonth(),
-    new Date().getDate(),
-    hour, minute, 0, 0
-  );
-}
-
 function App() {
   const [view, setView] = useState('week');
   const [date, setDate] = useState(new Date());
@@ -50,9 +39,10 @@ function App() {
   const [students, setStudents] = useState([]);
   const [editingStudent, setEditingStudent] = useState(null);
 
-  // 1년 범위 계산
-  const minDate = startOfMonth(new Date());
-  const maxDate = endOfMonth(addMonths(new Date(), 11)); // 1년 후 마지막 날
+  // 오늘 날짜의 8:00, 23:00을 min/max로 지정
+  const today = new Date();
+  const min = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 8, 0, 0, 0);
+  const max = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 0, 0, 0);
 
   useEffect(() => {
     loadData();
@@ -76,7 +66,7 @@ function App() {
         start: doc.data().start.toDate(),
         end: doc.data().end.toDate()
       }));
-      setEvents(lessonsData);
+      setEvents(lessonsData);ㅋ
     } catch (error) {
       console.error('Error loading data:', error);
     }
@@ -177,10 +167,8 @@ function App() {
             onSelectSlot={handleSelectSlot}
             onSelectEvent={handleSelectEvent}
             selectable
-            min={new Date(2025, 0, 1, 8, 0)}    // 하루 중 표시 시작 시간: 오전 8시
-            max={new Date(2025, 0, 1, 22, 0)}   // 하루 중 표시 종료 시간: 오후 10시
-            minDate={minDate}              
-            maxDate={maxDate}                    
+            min={min}
+            max={max}
             step={30}
             timeslots={2}
             messages={{
