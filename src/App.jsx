@@ -44,6 +44,16 @@ function App() {
   const min = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 8, 0, 0, 0);
   const max = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 0, 0, 0);
 
+  // 테스트용 이벤트 (오늘 10:00-11:00)
+  const testEvent = {
+    id: 'test-1',
+    title: '테스트 레슨',
+    start: new Date(today.getFullYear(), today.getMonth(), today.getDate(), 10, 0, 0, 0),
+    end: new Date(today.getFullYear(), today.getMonth(), today.getDate(), 11, 0, 0, 0),
+    studentId: 'test-student',
+    status: 'scheduled'
+  };
+
   useEffect(() => {
     loadData();
   }, []);
@@ -66,7 +76,12 @@ function App() {
         start: doc.data().start.toDate(),
         end: doc.data().end.toDate()
       }));
-      setEvents(lessonsData);ㅋ
+      // 테스트 이벤트 추가
+      const allEvents = [testEvent, ...lessonsData];
+      console.log('Calendar events:', allEvents);
+      console.log('min:', min);
+      console.log('max:', max);
+      setEvents(allEvents);
     } catch (error) {
       console.error('Error loading data:', error);
     }
@@ -122,6 +137,20 @@ function App() {
     }
   };
 
+  // 이벤트 스타일 설정
+  const eventPropGetter = (event) => {
+    return {
+      style: {
+        backgroundColor: '#b86adf',
+        color: 'white',
+        border: 'none',
+        borderRadius: '4px',
+        padding: '2px 4px',
+        fontSize: '12px'
+      }
+    };
+  };
+
   return (
     <div className="app">
       <Sidebar 
@@ -169,6 +198,7 @@ function App() {
             selectable
             min={min}
             max={max}
+            eventPropGetter={eventPropGetter}
             step={30}
             timeslots={2}
             messages={{
