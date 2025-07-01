@@ -445,6 +445,7 @@ const StudentModal = ({ student, onClose, onSave }) => {
               name="totalLessons"
               value={formData.totalLessons}
               onChange={handleChange}
+              onWheel={(e) => e.target.blur()}
               min="1"
               required
               placeholder="예: 4, 8, 12"
@@ -475,6 +476,7 @@ const StudentModal = ({ student, onClose, onSave }) => {
                 name="packagePrice"
                 value={formData.packagePrice || ''}
                 onChange={handleChange}
+                onWheel={(e) => e.target.blur()}
                 min="0"
                 placeholder="예: 200000"
                 style={{ paddingLeft: 24 }}
