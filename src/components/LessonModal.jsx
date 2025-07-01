@@ -3,11 +3,13 @@ import { X } from 'lucide-react';
 import { collection, getDocs, doc, addDoc, updateDoc, runTransaction } from 'firebase/firestore';
 import { db } from '../firebase';
 
-const LessonModal = ({ slot, event, students, onClose, onSave }) => {
+const LessonModal = ({ slot, event, students = [], onClose, onSave }) => {
   const [formData, setFormData] = useState({
     studentId: '',
     title: '',
-    notes: ''
+    notes: '',
+    status: 'scheduled',
+    isPaid: false
   });
   
   const timeOptions = [];
@@ -28,7 +30,9 @@ const LessonModal = ({ slot, event, students, onClose, onSave }) => {
       setFormData({
         studentId: event.studentId || '',
         title: event.title || '',
-        notes: event.notes || ''
+        notes: event.notes || '',
+        status: event.status || 'scheduled',
+        isPaid: event.isPaid || false
       });
       const start = new Date(event.start);
       const end = new Date(event.end);
@@ -40,7 +44,7 @@ const LessonModal = ({ slot, event, students, onClose, onSave }) => {
       const roundedMinutes = Math.floor(start.getMinutes() / 10) * 10;
       setStartTime(`${String(start.getHours()).padStart(2, '0')}:${String(roundedMinutes).padStart(2, '0')}`);
       // Reset form data for new lesson
-      setFormData({ studentId: '', title: '', notes: '' });
+      setFormData({ studentId: '', title: '', notes: '', status: 'scheduled', isPaid: false });
     }
   }, [event, slot]);
 
@@ -99,8 +103,12 @@ const LessonModal = ({ slot, event, students, onClose, onSave }) => {
   };
   
   const handleChange = (e) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
+    const { name, value, type, checked } = e.target;
+    if (type === 'checkbox') {
+      setFormData(prev => ({ ...prev, [name]: checked }));
+    } else {
+      setFormData(prev => ({ ...prev, [name]: value }));
+    }
   };
 
   const handleStudentChange = (e) => {
@@ -114,7 +122,7 @@ const LessonModal = ({ slot, event, students, onClose, onSave }) => {
     }));
   };
 
-  const selectedStudent = students.find(student => student.id === formData.studentId);
+  const selectedStudent = (students || []).find(student => student.id === formData.studentId);
   
   let displayEndTime = '--:--';
   const baseDateForDisplay = event?.start || slot?.start;
@@ -147,7 +155,7 @@ const LessonModal = ({ slot, event, students, onClose, onSave }) => {
               required
             >
               <option value="">학생을 선택하세요</option>
-              {students.map(student => (
+              {Array.isArray(students) && students.map(student => (
                 <option key={student.id} value={student.id}>
                   {student.name} ({student.remainingLessons || 0}회 남음)
                 </option>
@@ -172,6 +180,34 @@ const LessonModal = ({ slot, event, students, onClose, onSave }) => {
               onChange={handleChange}
               placeholder="레슨 제목을 입력하세요"
             />
+          </div>
+
+          <div className="form-group">
+            <label htmlFor="status">상태</label>
+            <select
+              id="status"
+              name="status"
+              value={formData.status}
+              onChange={handleChange}
+              required
+            >
+              <option value="scheduled">예정</option>
+              <option value="completed">완료</option>
+              <option value="cancelled">취소</option>
+            </select>
+          </div>
+
+          <div className="form-group">
+            <label>
+              <input
+                type="checkbox"
+                name="isPaid"
+                checked={formData.isPaid}
+                onChange={handleChange}
+                style={{ marginRight: '8px' }}
+              />
+              결제 확인
+            </label>
           </div>
 
           <div className="form-row">
