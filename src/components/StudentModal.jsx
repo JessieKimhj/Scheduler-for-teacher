@@ -55,17 +55,14 @@ const StudentModal = ({ student, onClose, onSave }) => {
       if (!lessonTime.time) return; // 시간이 선택되지 않은 경우 스킵
       
       const [hours, minutes] = lessonTime.time.split(':').map(Number);
-      const dayOfWeek = ['월', '화', '수', '목', '금', '토', '일'].indexOf(lessonTime.day);
+      const dayOfWeek = weekDays.indexOf(lessonTime.day); // 0=일, 1=월, ... 6=토
       
       // 오늘부터 시작해서 해당 요일의 첫 번째 날짜 찾기
       const today = new Date();
       const startDate = new Date(today);
       const currentDay = today.getDay();
-      const targetDay = dayOfWeek === 0 ? 0 : dayOfWeek; // 월요일 = 0
-      
-      let daysToAdd = targetDay - currentDay;
-      if (daysToAdd <= 0) daysToAdd += 7;
-      
+      let daysToAdd = dayOfWeek - currentDay;
+      if (daysToAdd < 0) daysToAdd += 7;
       startDate.setDate(today.getDate() + daysToAdd);
       startDate.setHours(hours, minutes, 0, 0);
       
@@ -79,7 +76,7 @@ const StudentModal = ({ student, onClose, onSave }) => {
         
         events.push({
           studentId: studentId,
-          title: `${name} 레슨`,
+          title: `${name} ${i + 1}`,
           start: lessonDate,
           end: endDate,
           status: 'scheduled',
@@ -185,7 +182,7 @@ const StudentModal = ({ student, onClose, onSave }) => {
     setLessonTimes(newTimes);
   };
 
-  const weekDays = ['월', '화', '수', '목', '금', '토', '일'];
+  const weekDays = ['일', '월', '화', '수', '목', '금', '토'];
 
   // Generate time options from 09:00 to 22:00 in 10-minute increments
   const getTimeOptions = () => {
