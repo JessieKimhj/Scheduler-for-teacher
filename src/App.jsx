@@ -146,6 +146,19 @@ function App() {
         }
       };
     }
+    if (event.isSecondPackage) {
+      return {
+        style: {
+          backgroundColor: '#b86adf', // 보라색
+          color: 'white',
+          border: 'none',
+          borderRadius: '4px',
+          padding: '2px 4px',
+          fontSize: '12px',
+          opacity: 0.5
+        }
+      };
+    }
     return {
       style: {
         backgroundColor: '#b86adf', // 보라색

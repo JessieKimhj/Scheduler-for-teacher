@@ -50,6 +50,9 @@ const StudentModal = ({ student, onClose, onSave }) => {
       weekInterval = 1; // 유동적이지만 기본 1주
     }
     
+    // 주 1회/주 2회 + 2회 이상 패키지면 두 번째 패키지(반투명)도 추가
+    const shouldAddSecondPackage = (['weekly-1', 'weekly-2'].includes(frequency) && totalLessons >= 2);
+
     // 트라이얼/유동적은 기존대로 1회씩만 생성
     if (frequency === 'trial' || frequency === 'flexible') {
       lessonTimes.forEach((lessonTime) => {
@@ -99,17 +102,54 @@ const StudentModal = ({ student, onClose, onSave }) => {
         endDate.setMinutes(startDate.getMinutes() + lessonDuration);
         events.push({
           studentId: studentId,
-          title: `${name} ${created + 1}`,
+          title: `${name} ${((created) % totalLessons) + 1}`,
           start: startDate,
           end: endDate,
           status: 'scheduled',
           isTrial: false,
+          isSecondPackage: false,
           createdAt: new Date(),
           updatedAt: new Date()
         });
         created++;
       }
       week++;
+    }
+    
+    // 두 번째 패키지(반투명) 추가
+    if (shouldAddSecondPackage) {
+      let created2 = 0;
+      let week2 = week;
+      while (created2 < totalLessons) {
+        for (let i = 0; i < lessonTimes.length && created2 < totalLessons; i++) {
+          const lessonTime = lessonTimes[i];
+          if (!lessonTime.time) continue;
+          const [hours, minutes] = lessonTime.time.split(':').map(Number);
+          const dayOfWeek = weekDays.indexOf(lessonTime.day);
+          const today = new Date();
+          const startDate = new Date(today);
+          const currentDay = today.getDay();
+          let daysToAdd = dayOfWeek - currentDay;
+          if (daysToAdd < 0) daysToAdd += 7;
+          startDate.setDate(today.getDate() + daysToAdd + week2 * weekInterval * 7);
+          startDate.setHours(hours, minutes, 0, 0);
+          const endDate = new Date(startDate);
+          endDate.setMinutes(startDate.getMinutes() + lessonDuration);
+          events.push({
+            studentId: studentId,
+            title: `${name} ${((created2) % totalLessons) + 1}`,
+            start: startDate,
+            end: endDate,
+            status: 'scheduled',
+            isTrial: false,
+            isSecondPackage: true,
+            createdAt: new Date(),
+            updatedAt: new Date()
+          });
+          created2++;
+        }
+        week2++;
+      }
     }
     
     return events;
