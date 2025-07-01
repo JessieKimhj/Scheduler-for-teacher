@@ -119,13 +119,14 @@ const StudentModal = ({ student, onClose, onSave }) => {
       return events;
     }
 
-    // 총 totalLessons만큼만 생성 (여러 lessonTimes가 있으면 순서대로 분배)
-    let created = 0;
+    // 모든 레슨 날짜를 먼저 생성하고 시간순으로 정렬
+    const allLessonDates = [];
     let week = 0;
-    while (created < totalLessons) {
-      for (let i = 0; i < lessonTimes.length && created < totalLessons; i++) {
-        const lessonTime = lessonTimes[i];
-        if (!lessonTime.time) continue;
+    
+    // 충분한 주차만큼 레슨 날짜 생성
+    while (allLessonDates.length < totalLessons) {
+      lessonTimes.forEach(lessonTime => {
+        if (!lessonTime.time) return;
         const [hours, minutes] = lessonTime.time.split(':').map(Number);
         const dayOfWeek = weekDays.indexOf(lessonTime.day);
         const today = new Date();
@@ -135,60 +136,87 @@ const StudentModal = ({ student, onClose, onSave }) => {
         if (daysToAdd < 0) daysToAdd += 7;
         startDate.setDate(today.getDate() + daysToAdd + week * weekInterval * 7);
         startDate.setHours(hours, minutes, 0, 0);
-        const endDate = new Date(startDate);
-        endDate.setMinutes(startDate.getMinutes() + lessonDuration);
-        events.push({
-          studentId: studentId,
-          title: `${name} ${((created) % totalLessons) + 1}`,
+        
+        allLessonDates.push({
           start: startDate,
-          end: endDate,
-          status: 'scheduled',
-          isTrial: false,
-          isSecondPackage: false,
-          createdAt: new Date(),
-          updatedAt: new Date()
+          lessonTime: lessonTime
         });
-        created++;
-      }
+      });
       week++;
     }
+    
+    // 시간순으로 정렬하고 필요한 개수만큼만 선택
+    allLessonDates.sort((a, b) => a.start - b.start);
+    const selectedLessons = allLessonDates.slice(0, totalLessons);
+    
+    // 정렬된 순서대로 레슨 생성
+    selectedLessons.forEach((lessonData, index) => {
+      const endDate = new Date(lessonData.start);
+      endDate.setMinutes(lessonData.start.getMinutes() + lessonDuration);
+      
+      events.push({
+        studentId: studentId,
+        title: `${name} ${index + 1}`,
+        start: lessonData.start,
+        end: endDate,
+        status: 'scheduled',
+        isTrial: false,
+        isSecondPackage: false,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      });
+    });
     
     // 두 번째 패키지(반투명) 추가
     if (shouldAddSecondPackage) {
       // 첫 번째 패키지의 마지막 레슨의 start를 기준으로 N주 뒤부터 시작
       const firstPackageLastLesson = events[events.length - 1];
       const baseDate = new Date(firstPackageLastLesson.start);
-      let created2 = 0;
-      let week2 = 0;
-      while (created2 < totalLessons) {
-        for (let i = 0; i < lessonTimes.length && created2 < totalLessons; i++) {
-          const lessonTime = lessonTimes[i];
-          if (!lessonTime.time) continue;
+      // 첫 번째 패키지 마지막 레슨 다음부터 계속 생성
+      const continueFromWeek = Math.ceil(totalLessons / lessonTimes.length);
+      const secondPackageDates = [];
+      let week2 = continueFromWeek;
+      
+      while (secondPackageDates.length < totalLessons) {
+        lessonTimes.forEach(lessonTime => {
+          if (!lessonTime.time) return;
           const [hours, minutes] = lessonTime.time.split(':').map(Number);
           const dayOfWeek = weekDays.indexOf(lessonTime.day);
-          // baseDate 기준 N주 뒤부터 시작
-          const startDate = new Date(baseDate);
-          startDate.setDate(startDate.getDate() + (week2 + 1) * weekInterval * 7); // +1주부터 시작
-          // 요일 맞추기
-          startDate.setDate(startDate.getDate() - startDate.getDay() + dayOfWeek);
+          const today = new Date();
+          const startDate = new Date(today);
+          const currentDay = today.getDay();
+          let daysToAdd = dayOfWeek - currentDay;
+          if (daysToAdd < 0) daysToAdd += 7;
+          startDate.setDate(today.getDate() + daysToAdd + week2 * weekInterval * 7);
           startDate.setHours(hours, minutes, 0, 0);
-          const endDate = new Date(startDate);
-          endDate.setMinutes(startDate.getMinutes() + lessonDuration);
-          events.push({
-            studentId: studentId,
-            title: `${name} ${((created2) % totalLessons) + 1}`,
+          
+          secondPackageDates.push({
             start: startDate,
-            end: endDate,
-            status: 'scheduled',
-            isTrial: false,
-            isSecondPackage: true,
-            createdAt: new Date(),
-            updatedAt: new Date()
+            lessonTime: lessonTime
           });
-          created2++;
-        }
+        });
         week2++;
       }
+      
+      secondPackageDates.sort((a, b) => a.start - b.start);
+      const selectedSecondLessons = secondPackageDates.slice(0, totalLessons);
+      
+      selectedSecondLessons.forEach((lessonData, index) => {
+        const endDate = new Date(lessonData.start);
+        endDate.setMinutes(lessonData.start.getMinutes() + lessonDuration);
+        
+        events.push({
+          studentId: studentId,
+          title: `${name} ${index + 1}`,
+          start: lessonData.start,
+          end: endDate,
+          status: 'scheduled',
+          isTrial: false,
+          isSecondPackage: true,
+          createdAt: new Date(),
+          updatedAt: new Date()
+        });
+      });
     }
     
     return events;
