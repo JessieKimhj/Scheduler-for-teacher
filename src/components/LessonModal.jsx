@@ -134,6 +134,120 @@ const LessonModal = ({ slot, event, students = [], onClose, onSave }) => {
     displayEndTime = `${String(endForDisplay.getHours()).padStart(2, '0')}:${String(endForDisplay.getMinutes()).padStart(2, '0')}`;
   }
 
+  // 1. 결제 완료 버튼 노출 조건
+  const isFirstPendingOfSecondPackage = event && event.isSecondPackage && !event.isPaid && event.title.match(/\d+$/)?.[0] === '1';
+
+  // 2. 결제 완료 처리 함수
+  const handleConfirmPayment = async () => {
+    if (!event) return;
+    
+    try {
+      // 학생 정보 및 레슨 데이터 가져오기
+      const [studentSnapshot, lessonsSnapshot] = await Promise.all([
+        getDocs(collection(db, 'students')),
+        getDocs(collection(db, 'lessons'))
+      ]);
+      
+      const student = studentSnapshot.docs.find(doc => doc.id === event.studentId)?.data();
+      if (!student) {
+        alert('학생 정보를 찾을 수 없습니다.');
+        return;
+      }
+      
+      const { totalLessons = 4, lessonTimes = [], lessonDuration = 50, name = '', frequency = 'weekly-1' } = student;
+      
+      // 해당 학생의 모든 반투명 레슨 가져오기
+      const allLessons = lessonsSnapshot.docs
+        .map(doc => ({ id: doc.id, ...doc.data() }))
+        .filter(l => l.studentId === event.studentId && l.isSecondPackage && !l.isPaid)
+        .sort((a, b) => {
+          const aStart = a.start instanceof Date ? a.start : a.start.toDate();
+          const bStart = b.start instanceof Date ? b.start : b.start.toDate();
+          return aStart - bStart;
+        });
+      
+      // 클릭한 레슨 찾기
+      const clickedStart = event.start instanceof Date ? event.start : event.start.toDate();
+      const clickedIdx = allLessons.findIndex(l => {
+        const lessonStart = l.start instanceof Date ? l.start : l.start.toDate();
+        return Math.abs(clickedStart.getTime() - lessonStart.getTime()) < 1000;
+      });
+      
+      if (clickedIdx === -1) {
+        alert('해당 레슨을 찾을 수 없습니다.');
+        return;
+      }
+      
+      // 패키지 시작 인덱스 계산
+      const packageStartIdx = Math.floor(clickedIdx / totalLessons) * totalLessons;
+      const thisPackage = allLessons.slice(packageStartIdx, packageStartIdx + totalLessons);
+      
+      if (thisPackage.length < totalLessons) {
+        alert(`패키지 레슨이 부족합니다. (필요: ${totalLessons}, 실제: ${thisPackage.length})`);
+        return;
+      }
+      
+      // 배치 작업
+      const batch = [];
+      
+      // 1) 현재 패키지 불투명화
+      thisPackage.forEach(lesson => {
+        batch.push(updateDoc(doc(db, 'lessons', lesson.id), { 
+          isPaid: true, 
+          isSecondPackage: false 
+        }));
+      });
+      
+      // 2) 다음 패키지 생성
+      const lastLesson = thisPackage[thisPackage.length - 1];
+      const lastStartDate = lastLesson.start instanceof Date ? lastLesson.start : lastLesson.start.toDate();
+      const weekDays = ['일', '월', '화', '수', '목', '금', '토'];
+      const weekInterval = frequency === 'biweekly' ? 2 : 1;
+      
+      let created = 0, week = 0;
+      while (created < totalLessons) {
+        for (let i = 0; i < lessonTimes.length && created < totalLessons; i++) {
+          const lessonTime = lessonTimes[i];
+          if (!lessonTime.time) continue;
+          
+          const [hours, minutes] = lessonTime.time.split(':').map(Number);
+          const dayOfWeek = weekDays.indexOf(lessonTime.day);
+          
+          const startDate = new Date(lastStartDate);
+          startDate.setDate(startDate.getDate() + (week + 1) * weekInterval * 7);
+          startDate.setDate(startDate.getDate() - startDate.getDay() + dayOfWeek);
+          startDate.setHours(hours, minutes, 0, 0);
+          
+          const endDate = new Date(startDate);
+          endDate.setMinutes(startDate.getMinutes() + lessonDuration);
+          
+          const newLesson = {
+            studentId: event.studentId,
+            title: `${name} ${(created % totalLessons) + 1}`,
+            start: startDate,
+            end: endDate,
+            status: 'scheduled',
+            isTrial: false,
+            isSecondPackage: true,
+            isPaid: false,
+            createdAt: new Date(),
+            updatedAt: new Date()
+          };
+          
+          batch.push(addDoc(collection(db, 'lessons'), newLesson));
+          created++;
+        }
+        week++;
+      }
+      
+      await Promise.all(batch);
+      onSave();
+    } catch (error) {
+      console.error('결제 완료 오류:', error);
+      alert('결제 완료 처리 중 오류가 발생했습니다.');
+    }
+  };
+
   return (
     <div className="modal-overlay">
       <div className="modal">
@@ -264,6 +378,11 @@ const LessonModal = ({ slot, event, students = [], onClose, onSave }) => {
             <button type="button" className="cancel-button" onClick={onClose}>
               취소
             </button>
+            {isFirstPendingOfSecondPackage && (
+              <button type="button" className="save-button" onClick={handleConfirmPayment}>
+                결제 완료
+              </button>
+            )}
             <button type="submit" className="save-button" disabled={!formData.studentId}>
               {event ? '수정' : '저장'}
             </button>

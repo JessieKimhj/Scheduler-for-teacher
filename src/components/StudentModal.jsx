@@ -3,6 +3,43 @@ import { X, Plus, Trash2 } from 'lucide-react';
 import { addDoc, updateDoc, doc, collection, writeBatch, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
 
+// 총 레슨 수 표시 컴포넌트
+const TotalLessonsDisplay = ({ studentId }) => {
+  const [totalCount, setTotalCount] = useState(0);
+  const [completedCount, setCompletedCount] = useState(0);
+  
+  useEffect(() => {
+    const fetchLessonCounts = async () => {
+      try {
+        const lessonsSnapshot = await getDocs(collection(db, 'lessons'));
+        const studentLessons = lessonsSnapshot.docs
+          .map(doc => ({ id: doc.id, ...doc.data() }))
+          .filter(lesson => lesson.studentId === studentId);
+        
+        const total = studentLessons.length;
+        const completed = studentLessons.filter(lesson => 
+          lesson.isPaid === true || (!lesson.isSecondPackage && lesson.isPaid !== false)
+        ).length;
+        
+        setTotalCount(total);
+        setCompletedCount(completed);
+      } catch (error) {
+        console.error('Error fetching lesson counts:', error);
+      }
+    };
+    
+    if (studentId) {
+      fetchLessonCounts();
+    }
+  }, [studentId]);
+  
+  return (
+    <span>
+      총 레슨 수: {totalCount}회 | 완료된 레슨: {completedCount}회 | 남은 레슨: {totalCount - completedCount}회
+    </span>
+  );
+};
+
 const StudentModal = ({ student, onClose, onSave }) => {
   const [formData, setFormData] = useState({
     name: '',
@@ -118,20 +155,22 @@ const StudentModal = ({ student, onClose, onSave }) => {
     
     // 두 번째 패키지(반투명) 추가
     if (shouldAddSecondPackage) {
+      // 첫 번째 패키지의 마지막 레슨의 start를 기준으로 N주 뒤부터 시작
+      const firstPackageLastLesson = events[events.length - 1];
+      const baseDate = new Date(firstPackageLastLesson.start);
       let created2 = 0;
-      let week2 = week;
+      let week2 = 0;
       while (created2 < totalLessons) {
         for (let i = 0; i < lessonTimes.length && created2 < totalLessons; i++) {
           const lessonTime = lessonTimes[i];
           if (!lessonTime.time) continue;
           const [hours, minutes] = lessonTime.time.split(':').map(Number);
           const dayOfWeek = weekDays.indexOf(lessonTime.day);
-          const today = new Date();
-          const startDate = new Date(today);
-          const currentDay = today.getDay();
-          let daysToAdd = dayOfWeek - currentDay;
-          if (daysToAdd < 0) daysToAdd += 7;
-          startDate.setDate(today.getDate() + daysToAdd + week2 * weekInterval * 7);
+          // baseDate 기준 N주 뒤부터 시작
+          const startDate = new Date(baseDate);
+          startDate.setDate(startDate.getDate() + (week2 + 1) * weekInterval * 7); // +1주부터 시작
+          // 요일 맞추기
+          startDate.setDate(startDate.getDate() - startDate.getDay() + dayOfWeek);
           startDate.setHours(hours, minutes, 0, 0);
           const endDate = new Date(startDate);
           endDate.setMinutes(startDate.getMinutes() + lessonDuration);
@@ -382,6 +421,11 @@ const StudentModal = ({ student, onClose, onSave }) => {
               required
               placeholder="예: 4, 8, 12"
             />
+            {student && (
+              <div style={{ marginTop: '8px', fontSize: '14px', color: '#666' }}>
+                <TotalLessonsDisplay studentId={student.id} />
+              </div>
+            )}
           </div>
 
           <div className="form-group">
