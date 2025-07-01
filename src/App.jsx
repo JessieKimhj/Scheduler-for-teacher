@@ -8,7 +8,7 @@ import ko from 'date-fns/locale/ko';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
 import './App.css';
 
-import { collection, getDocs, addDoc, updateDoc, doc, deleteDoc } from 'firebase/firestore';
+import { collection, getDocs, addDoc, updateDoc, doc, deleteDoc, query, where } from 'firebase/firestore';
 import { db } from './firebase';
 
 import Sidebar from './components/Sidebar';
@@ -128,7 +128,17 @@ function App() {
   const handleDeleteStudent = async (studentId) => {
     if (window.confirm('정말로 이 학생을 삭제하시겠습니까?')) {
       try {
+        // 1. 학생 삭제
         await deleteDoc(doc(db, 'students', studentId));
+
+        // 2. 해당 학생의 모든 레슨 삭제
+        const lessonsRef = collection(db, 'lessons');
+        const q = query(lessonsRef, where('studentId', '==', studentId));
+        const lessonsSnapshot = await getDocs(q);
+        const deletePromises = lessonsSnapshot.docs.map(lessonDoc => deleteDoc(lessonDoc.ref));
+        await Promise.all(deletePromises);
+
+        // 3. 데이터 새로고침
         await loadData();
       } catch (error) {
         console.error('Error deleting student:', error);
