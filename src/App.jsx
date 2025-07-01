@@ -134,9 +134,21 @@ function App() {
 
   // 이벤트 스타일 설정
   const eventPropGetter = (event) => {
+    if (event.isTrial) {
+      return {
+        style: {
+          backgroundColor: '#4caf50', // 초록색
+          color: 'white',
+          border: 'none',
+          borderRadius: '4px',
+          padding: '2px 4px',
+          fontSize: '12px'
+        }
+      };
+    }
     return {
       style: {
-        backgroundColor: '#b86adf',
+        backgroundColor: '#b86adf', // 보라색
         color: 'white',
         border: 'none',
         borderRadius: '4px',

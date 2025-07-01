@@ -50,41 +50,67 @@ const StudentModal = ({ student, onClose, onSave }) => {
       weekInterval = 1; // 유동적이지만 기본 1주
     }
     
-    // 각 수업 시간에 대해 레슨 생성
-    lessonTimes.forEach((lessonTime, timeIndex) => {
-      if (!lessonTime.time) return; // 시간이 선택되지 않은 경우 스킵
-      
-      const [hours, minutes] = lessonTime.time.split(':').map(Number);
-      const dayOfWeek = weekDays.indexOf(lessonTime.day); // 0=일, 1=월, ... 6=토
-      
-      // 오늘부터 시작해서 해당 요일의 첫 번째 날짜 찾기
-      const today = new Date();
-      const startDate = new Date(today);
-      const currentDay = today.getDay();
-      let daysToAdd = dayOfWeek - currentDay;
-      if (daysToAdd < 0) daysToAdd += 7;
-      startDate.setDate(today.getDate() + daysToAdd);
-      startDate.setHours(hours, minutes, 0, 0);
-      
-      // 총 수업 횟수만큼 레슨 생성
-      for (let i = 0; i < totalLessons; i++) {
-        const lessonDate = new Date(startDate);
-        lessonDate.setDate(startDate.getDate() + (i * weekInterval * 7));
-        
-        const endDate = new Date(lessonDate);
-        endDate.setMinutes(lessonDate.getMinutes() + lessonDuration);
-        
+    // 트라이얼/유동적은 기존대로 1회씩만 생성
+    if (frequency === 'trial' || frequency === 'flexible') {
+      lessonTimes.forEach((lessonTime) => {
+        if (!lessonTime.time) return;
+        const [hours, minutes] = lessonTime.time.split(':').map(Number);
+        const dayOfWeek = weekDays.indexOf(lessonTime.day);
+        const today = new Date();
+        const startDate = new Date(today);
+        const currentDay = today.getDay();
+        let daysToAdd = dayOfWeek - currentDay;
+        if (daysToAdd < 0) daysToAdd += 7;
+        startDate.setDate(today.getDate() + daysToAdd);
+        startDate.setHours(hours, minutes, 0, 0);
+        const endDate = new Date(startDate);
+        endDate.setMinutes(startDate.getMinutes() + lessonDuration);
         events.push({
           studentId: studentId,
-          title: `${name} ${i + 1}`,
-          start: lessonDate,
+          title: frequency === 'trial' ? name : `${name} 1`,
+          start: startDate,
           end: endDate,
           status: 'scheduled',
+          isTrial: frequency === 'trial',
           createdAt: new Date(),
           updatedAt: new Date()
         });
+      });
+      return events;
+    }
+
+    // 총 totalLessons만큼만 생성 (여러 lessonTimes가 있으면 순서대로 분배)
+    let created = 0;
+    let week = 0;
+    while (created < totalLessons) {
+      for (let i = 0; i < lessonTimes.length && created < totalLessons; i++) {
+        const lessonTime = lessonTimes[i];
+        if (!lessonTime.time) continue;
+        const [hours, minutes] = lessonTime.time.split(':').map(Number);
+        const dayOfWeek = weekDays.indexOf(lessonTime.day);
+        const today = new Date();
+        const startDate = new Date(today);
+        const currentDay = today.getDay();
+        let daysToAdd = dayOfWeek - currentDay;
+        if (daysToAdd < 0) daysToAdd += 7;
+        startDate.setDate(today.getDate() + daysToAdd + week * weekInterval * 7);
+        startDate.setHours(hours, minutes, 0, 0);
+        const endDate = new Date(startDate);
+        endDate.setMinutes(startDate.getMinutes() + lessonDuration);
+        events.push({
+          studentId: studentId,
+          title: `${name} ${created + 1}`,
+          start: startDate,
+          end: endDate,
+          status: 'scheduled',
+          isTrial: false,
+          createdAt: new Date(),
+          updatedAt: new Date()
+        });
+        created++;
       }
-    });
+      week++;
+    }
     
     return events;
   };
@@ -255,6 +281,7 @@ const StudentModal = ({ student, onClose, onSave }) => {
               <option value="weekly-2">주 2회</option>
               <option value="biweekly">격주</option>
               <option value="flexible">유동적</option>
+              <option value="trial">트라이얼</option>
             </select>
           </div>
 
