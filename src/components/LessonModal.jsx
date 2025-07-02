@@ -102,7 +102,8 @@ async function handleLessonCancel(event, db) {
   const studentSnapshot = await getDocs(collection(db, 'students'));
   const student = studentSnapshot.docs.find(doc => doc.id === studentId)?.data();
   const {
-    totalLessons = 4,
+    numberOfPackage = 4,
+    totalLessons = 8,
     lessonTimes = [],
     lessonDuration = 50,
     name = '',
@@ -115,20 +116,20 @@ let transparentLessons = allLessons.filter(l => l.isSecondPackage === true);
 
 
   // 4. 패키지가 2회 이상인지 체크
-  if (totalLessons < 2) {
+  if (numberOfPackage < 2) {
     // 2회 미만이면 그냥 끝 (추가 로직 없이)
     return;
   }
 
   // 5. 불투명 레슨 개수 체크 후 부족하면 반투명 당겨서 채우기
-  while (opaqueLessons.length < totalLessons && transparentLessons.length > 0) {
+  while (opaqueLessons.length < numberOfPackage && transparentLessons.length > 0) {
     const lessonToMove = transparentLessons.shift();
     lessonToMove.isSecondPackage = false; // 불투명으로 변경
     opaqueLessons.push(lessonToMove);
   }
 
   // 6. 반투명도 부족하면 새로 생성
-  while (transparentLessons.length < totalLessons) {
+  while (transparentLessons.length < numberOfPackage) {
     // 새 반투명 레슨 생성 날짜 계산
     // 마지막 반투명 레슨 날짜 가져오기 (없으면 불투명 마지막 날짜 기준)
     const lastTransparent = transparentLessons[transparentLessons.length - 1];
@@ -153,7 +154,7 @@ let transparentLessons = allLessons.filter(l => l.isSecondPackage === true);
 
     const newLesson = {
       studentId: studentId,
-      title: `${name} ${opaqueLessons.length + transparentLessons.length + 1}`,
+      title: `${name} ${(transparentLessons.length % numberOfPackage) + 1}`,
       start: newStart,
       end: newEnd,
       status: 'scheduled',
@@ -173,22 +174,23 @@ let transparentLessons = allLessons.filter(l => l.isSecondPackage === true);
     return aStart - bStart;
   });
 
-  // 8. 회차 번호 재정렬
-  const opaqueCount = opaqueLessons.length;
-  const transparentCount = transparentLessons.length;
+  // 8. 불투명 레슨을 패키지별로 그룹화하여 회차 번호 재정렬
+  for (let i = 0; i < opaqueLessons.length; i += numberOfPackage) {
+    const packageLessons = opaqueLessons.slice(i, i + numberOfPackage);
+    packageLessons.forEach((lesson, index) => {
+      const newTitle = lesson.title.replace(/\d+$/, (index + 1).toString());
+      lesson.title = newTitle;
+    });
+  }
   
-  // 8. 회차 번호 재정렬
-  opaqueLessons.forEach((lesson, index) => {
-  const newTitle = lesson.title.replace(/\d+$/, (index + 1).toString());
-  lesson.title = newTitle;
-});
-
-  
-  // 반투명 레슨 회차 재정렬 (1, 2, 3, 4)
-  transparentLessons.forEach((lesson, index) => {
-    const newTitle = lesson.title.replace(/\d+$/, (index + 1).toString());
-    lesson.title = newTitle;
-  });
+  // 반투명 레슨도 패키지별로 그룹화하여 회차 번호 재정렬
+  for (let i = 0; i < transparentLessons.length; i += numberOfPackage) {
+    const packageLessons = transparentLessons.slice(i, i + numberOfPackage);
+    packageLessons.forEach((lesson, index) => {
+      const newTitle = lesson.title.replace(/\d+$/, (index + 1).toString());
+      lesson.title = newTitle;
+    });
+  }
 
   // 9. DB에 업데이트
   const batchUpdates = [];
@@ -381,7 +383,7 @@ const LessonModal = ({ slot, event, students = [], onClose, onSave }) => {
         return;
       }
       
-      const { totalLessons = 4, lessonTimes = [], lessonDuration = 50, name = '', frequency = 'weekly-1' } = student;
+      const { numberOfPackage = 4, totalLessons = 8, lessonTimes = [], lessonDuration = 50, name = '', frequency = 'weekly-1' } = student;
       
       // 해당 학생의 모든 반투명 레슨 가져오기
       const allLessons = lessonsSnapshot.docs
@@ -406,11 +408,11 @@ const LessonModal = ({ slot, event, students = [], onClose, onSave }) => {
       }
       
       // 패키지 시작 인덱스 계산
-      const packageStartIdx = Math.floor(clickedIdx / totalLessons) * totalLessons;
-      const thisPackage = allLessons.slice(packageStartIdx, packageStartIdx + totalLessons);
+      const packageStartIdx = Math.floor(clickedIdx / numberOfPackage) * numberOfPackage;
+      const thisPackage = allLessons.slice(packageStartIdx, packageStartIdx + numberOfPackage);
       
-      if (thisPackage.length < totalLessons) {
-        alert(`패키지 레슨이 부족합니다. (필요: ${totalLessons}, 실제: ${thisPackage.length})`);
+      if (thisPackage.length < numberOfPackage) {
+        alert(`패키지 레슨이 부족합니다. (필요: ${numberOfPackage}, 실제: ${thisPackage.length})`);
         return;
       }
       
@@ -430,10 +432,10 @@ const LessonModal = ({ slot, event, students = [], onClose, onSave }) => {
       const lastStartDate = lastLesson.start instanceof Date ? lastLesson.start : lastLesson.start.toDate();
       const weekDays = ['일', '월', '화', '수', '목', '금', '토'];
       const weekInterval = frequency === 'biweekly' ? 2 : 1;
-      
+
       let created = 0, week = 0;
-      while (created < totalLessons) {
-        for (let i = 0; i < lessonTimes.length && created < totalLessons; i++) {
+      while (created < numberOfPackage) {
+        for (let i = 0; i < lessonTimes.length && created < numberOfPackage; i++) {
           const lessonTime = lessonTimes[i];
           if (!lessonTime.time) continue;
           
@@ -450,7 +452,7 @@ const LessonModal = ({ slot, event, students = [], onClose, onSave }) => {
           
           const newLesson = {
             studentId: event.studentId,
-            title: `${name} ${(created % totalLessons) + 1}`,
+            title: `${name} ${created + 1}`,
             start: startDate,
             end: endDate,
             status: 'scheduled',

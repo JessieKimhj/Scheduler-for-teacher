@@ -75,7 +75,7 @@ const StudentModal = ({ student, onClose, onSave }) => {
   // 레슨 일정 자동 생성 함수
   const generateLessonEvents = (studentData, studentId) => {
     const events = [];
-    const { lessonTimes, totalLessons, lessonDuration, frequency, name } = studentData;
+    const { lessonTimes, numberOfPackage, lessonDuration, frequency, name } = studentData;
     
     if (!lessonTimes || lessonTimes.length === 0) return events;
     
@@ -88,7 +88,7 @@ const StudentModal = ({ student, onClose, onSave }) => {
     }
     
     // 주 1회/주 2회 + 2회 이상 패키지면 두 번째 패키지(반투명)도 추가
-    const shouldAddSecondPackage = (['weekly-1', 'weekly-2'].includes(frequency) && totalLessons >= 2);
+    const shouldAddSecondPackage = (['weekly-1', 'weekly-2'].includes(frequency) && numberOfPackage >= 2);
 
     // 트라이얼/유동적은 기존대로 1회씩만 생성
     if (frequency === 'trial' || frequency === 'flexible') {
@@ -124,7 +124,7 @@ const StudentModal = ({ student, onClose, onSave }) => {
     let week = 0;
     
     // 충분한 주차만큼 레슨 날짜 생성
-    while (allLessonDates.length < totalLessons) {
+    while (allLessonDates.length < numberOfPackage) {
       lessonTimes.forEach(lessonTime => {
         if (!lessonTime.time) return;
         const [hours, minutes] = lessonTime.time.split(':').map(Number);
@@ -147,7 +147,7 @@ const StudentModal = ({ student, onClose, onSave }) => {
     
     // 시간순으로 정렬하고 필요한 개수만큼만 선택
     allLessonDates.sort((a, b) => a.start - b.start);
-    const selectedLessons = allLessonDates.slice(0, totalLessons);
+    const selectedLessons = allLessonDates.slice(0, numberOfPackage);
     
     // 정렬된 순서대로 레슨 생성
     selectedLessons.forEach((lessonData, index) => {
@@ -173,11 +173,11 @@ const StudentModal = ({ student, onClose, onSave }) => {
       const firstPackageLastLesson = events[events.length - 1];
       const baseDate = new Date(firstPackageLastLesson.start);
       // 첫 번째 패키지 마지막 레슨 다음부터 계속 생성
-      const continueFromWeek = Math.ceil(totalLessons / lessonTimes.length);
+      const continueFromWeek = Math.ceil(numberOfPackage / lessonTimes.length);
       const secondPackageDates = [];
       let week2 = continueFromWeek;
       
-      while (secondPackageDates.length < totalLessons) {
+      while (secondPackageDates.length < numberOfPackage) {
         lessonTimes.forEach(lessonTime => {
           if (!lessonTime.time) return;
           const [hours, minutes] = lessonTime.time.split(':').map(Number);
@@ -199,7 +199,7 @@ const StudentModal = ({ student, onClose, onSave }) => {
       }
       
       secondPackageDates.sort((a, b) => a.start - b.start);
-      const selectedSecondLessons = secondPackageDates.slice(0, totalLessons);
+      const selectedSecondLessons = secondPackageDates.slice(0, numberOfPackage);
       
       selectedSecondLessons.forEach((lessonData, index) => {
         const endDate = new Date(lessonData.start);
@@ -227,12 +227,15 @@ const StudentModal = ({ student, onClose, onSave }) => {
     setIsSubmitting(true);
     try {
       const finalLessonTimes = lessonTimes.filter(lt => lt.time.trim() !== '');
+      const numberOfPackage = parseInt(formData.totalLessons);
+      const currentTotalLessons = student ? (student.totalLessons || numberOfPackage * 2) : numberOfPackage * 2;
       const studentData = {
         ...formData,
         lessonTimes: finalLessonTimes,
         lessonDuration: parseInt(formData.lessonDuration, 10),
-        totalLessons: parseInt(formData.totalLessons),
-        remainingLessons: parseInt(formData.totalLessons),
+        numberOfPackage: numberOfPackage, // 패키지당 레슨 수 (고정값)
+        totalLessons: currentTotalLessons, // 기존 총 레슨 수 유지
+        remainingLessons: numberOfPackage,
         packagePrice: formData.packagePrice ? parseInt(formData.packagePrice) : 0,
         createdAt: student ? student.createdAt : new Date(),
         updatedAt: new Date()
