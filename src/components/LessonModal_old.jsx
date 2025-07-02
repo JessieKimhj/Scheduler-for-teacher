@@ -2,83 +2,34 @@ import React, { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
 import { collection, getDocs, doc, addDoc, updateDoc, runTransaction, deleteDoc } from 'firebase/firestore';
 import { db } from '../firebase';
-// 요일 인덱스 매핑
-const weekDays = ['일', '월', '화', '수', '목', '금', '토'];
 
-/**
- * baseDate 이후에 가능한 수업 요일 중 가장 가까운 날짜를 반환
- *
- * @param {Date} baseDate - 기준 날짜
- * @param {Array} lessonTimes - 수업 시간 배열 (예: [{ day: '월', time: '16:00' }, ...])
- * @param {string} frequency - 예: 'weekly-1', 'weekly-2'
- * @returns {Date} - 다음 수업 날짜
- */
+// lessonTimes 기준으로 다음 수업 날짜 계산 함수
 function getNextLessonDate(baseDate, lessonTimes, frequency) {
-  const weekInterval = parseInt(frequency.split('-')[1] || '1', 10); // 'weekly-1' → 1
-  const candidates = [];
+  const weekInterval = frequency === 'biweekly' ? 2 : 1;
+  const weekDays = ['일', '월', '화', '수', '목', '금', '토'];
 
-  lessonTimes.forEach(lt => {
-    if (!lt.day || !lt.time) return;
+  for (let week = 1; week <= 8; week++) {
+    for (const lessonTime of lessonTimes) {
+      if (!lessonTime.time) continue;
+      const [hours, minutes] = lessonTime.time.split(':').map(Number);
+      const dayOfWeek = weekDays.indexOf(lessonTime.day);
 
-    const [hour, minute] = lt.time.split(':').map(Number);
-    const dayIndex = weekDays.indexOf(lt.day);
+      const candidateDate = new Date(baseDate);
+      candidateDate.setDate(candidateDate.getDate() + week * weekInterval * 7);
+      candidateDate.setDate(candidateDate.getDate() - candidateDate.getDay() + dayOfWeek);
+      candidateDate.setHours(hours, minutes, 0, 0);
 
-    if (dayIndex === -1) return; // 유효하지 않은 요일이면 무시
-
-    const candidate = new Date(baseDate);
-    candidate.setHours(hour, minute, 0, 0);
-
-    const baseDay = candidate.getDay(); // 0~6
-
-    let daysToAdd = dayIndex - baseDay;
-
-    if (daysToAdd <= 0) {
-      // 이미 지난 요일이면 다음 주로
-      daysToAdd += 7 * weekInterval;
+      if (candidateDate > baseDate) {
+        return candidateDate;
+      }
     }
-
-    candidate.setDate(candidate.getDate() + daysToAdd);
-    candidates.push(candidate);
-  });
-
-  if (candidates.length === 0) {
-    // fallback
-    return new Date(baseDate.getTime() + 7 * 24 * 60 * 60 * 1000); // 일주일 뒤
   }
 
-  // 가장 가까운 날짜 반환
-  candidates.sort((a, b) => a - b);
-  return candidates[0];
+  // fallback: 다음날
+  const fallback = new Date(baseDate);
+  fallback.setDate(fallback.getDate() + 1);
+  return fallback;
 }
-
-
-// // lessonTimes 기준으로 다음 수업 날짜 계산 함수
-// function getNextLessonDate(baseDate, lessonTimes, frequency) {
-//   const weekInterval = frequency === 'biweekly' ? 2 : 1;
-//   const weekDays = ['일', '월', '화', '수', '목', '금', '토'];
-
-//   for (let week = 1; week <= 8; week++) {
-//     for (const lessonTime of lessonTimes) {
-//       if (!lessonTime.time) continue;
-//       const [hours, minutes] = lessonTime.time.split(':').map(Number);
-//       const dayOfWeek = weekDays.indexOf(lessonTime.day);
-
-//       const candidateDate = new Date(baseDate);
-//       candidateDate.setDate(candidateDate.getDate() + week * weekInterval * 7);
-//       candidateDate.setDate(candidateDate.getDate() - candidateDate.getDay() + dayOfWeek);
-//       candidateDate.setHours(hours, minutes, 0, 0);
-
-//       if (candidateDate > baseDate) {
-//         return candidateDate;
-//       }
-//     }
-//   }
-
-//   // fallback: 다음날
-//   const fallback = new Date(baseDate);
-//   fallback.setDate(fallback.getDate() + 1);
-//   return fallback;
-// }
 
 async function handleLessonCancel(event, db) {
   const cancelledStart = event.start instanceof Date ? event.start : event.start.toDate();
@@ -109,10 +60,9 @@ async function handleLessonCancel(event, db) {
     frequency = 'weekly-1',
   } = student;
 
-// 3. 불투명 / 반투명 분리 (정확한 속성 비교)
-let opaqueLessons = allLessons.filter(l => l.isSecondPackage === false || l.isSecondPackage === undefined);
-let transparentLessons = allLessons.filter(l => l.isSecondPackage === true);
-
+  // 3. 불투명 / 반투명 분리
+  let opaqueLessons = allLessons.filter(l => !l.isSecondPackage);
+  let transparentLessons = allLessons.filter(l => l.isSecondPackage);
 
   // 4. 패키지가 2회 이상인지 체크
   if (totalLessons < 2) {
@@ -177,12 +127,11 @@ let transparentLessons = allLessons.filter(l => l.isSecondPackage === true);
   const opaqueCount = opaqueLessons.length;
   const transparentCount = transparentLessons.length;
   
-  // 8. 회차 번호 재정렬
+  // 불투명 레슨 회차 재정렬 (1, 2, 3, 4)
   opaqueLessons.forEach((lesson, index) => {
-  const newTitle = lesson.title.replace(/\d+$/, (index + 1).toString());
-  lesson.title = newTitle;
-});
-
+    const newTitle = lesson.title.replace(/\d+$/, (index + 1).toString());
+    lesson.title = newTitle;
+  });
   
   // 반투명 레슨 회차 재정렬 (1, 2, 3, 4)
   transparentLessons.forEach((lesson, index) => {
