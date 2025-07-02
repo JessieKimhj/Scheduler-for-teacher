@@ -14,7 +14,7 @@ const weekDays = ['일', '월', '화', '수', '목', '금', '토'];
  * @returns {Date} - 다음 수업 날짜
  */
 function getNextLessonDate(baseDate, lessonTimes, frequency) {
-  const weekInterval = parseInt(frequency.split('-')[1] || '1', 10); // 'weekly-1' → 1
+  const weekInterval = parseInt(frequency.split('-')[1] || '1', 10);
   const candidates = [];
 
   lessonTimes.forEach(lt => {
@@ -22,34 +22,34 @@ function getNextLessonDate(baseDate, lessonTimes, frequency) {
 
     const [hour, minute] = lt.time.split(':').map(Number);
     const dayIndex = weekDays.indexOf(lt.day);
-
-    if (dayIndex === -1) return; // 유효하지 않은 요일이면 무시
+    if (dayIndex === -1) return;
 
     const candidate = new Date(baseDate);
     candidate.setHours(hour, minute, 0, 0);
 
-    const baseDay = candidate.getDay(); // 0~6
+    const baseDay = baseDate.getDay(); // 기준 날짜의 요일
+    const baseTime = baseDate.getHours() * 60 + baseDate.getMinutes();
+    const candidateTime = hour * 60 + minute;
 
     let daysToAdd = dayIndex - baseDay;
 
-    if (daysToAdd <= 0) {
-      // 이미 지난 요일이면 다음 주로
+    if (daysToAdd < 0 || (daysToAdd === 0 && candidateTime <= baseTime)) {
+      // 이미 지났거나 같은 요일이지만 시간이 지났으면 다음 주로
       daysToAdd += 7 * weekInterval;
     }
 
-    candidate.setDate(candidate.getDate() + daysToAdd);
+    candidate.setDate(baseDate.getDate() + daysToAdd);
     candidates.push(candidate);
   });
 
   if (candidates.length === 0) {
-    // fallback
-    return new Date(baseDate.getTime() + 7 * 24 * 60 * 60 * 1000); // 일주일 뒤
+    return new Date(baseDate.getTime() + 7 * 24 * 60 * 60 * 1000);
   }
 
-  // 가장 가까운 날짜 반환
   candidates.sort((a, b) => a - b);
   return candidates[0];
 }
+
 
 
 // // lessonTimes 기준으로 다음 수업 날짜 계산 함수
