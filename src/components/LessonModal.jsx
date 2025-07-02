@@ -1,7 +1,167 @@
 import React, { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
-import { collection, getDocs, doc, addDoc, updateDoc, runTransaction } from 'firebase/firestore';
+import { collection, getDocs, doc, addDoc, updateDoc, runTransaction, deleteDoc } from 'firebase/firestore';
 import { db } from '../firebase';
+
+// lessonTimes 기준으로 다음 수업 날짜 계산 함수
+function getNextLessonDate(baseDate, lessonTimes, frequency) {
+  const weekInterval = frequency === 'biweekly' ? 2 : 1;
+  const weekDays = ['일', '월', '화', '수', '목', '금', '토'];
+
+  for (let week = 1; week <= 8; week++) {
+    for (const lessonTime of lessonTimes) {
+      if (!lessonTime.time) continue;
+      const [hours, minutes] = lessonTime.time.split(':').map(Number);
+      const dayOfWeek = weekDays.indexOf(lessonTime.day);
+
+      const candidateDate = new Date(baseDate);
+      candidateDate.setDate(candidateDate.getDate() + week * weekInterval * 7);
+      candidateDate.setDate(candidateDate.getDate() - candidateDate.getDay() + dayOfWeek);
+      candidateDate.setHours(hours, minutes, 0, 0);
+
+      if (candidateDate > baseDate) {
+        return candidateDate;
+      }
+    }
+  }
+
+  // fallback: 다음날
+  const fallback = new Date(baseDate);
+  fallback.setDate(fallback.getDate() + 1);
+  return fallback;
+}
+
+async function handleLessonCancel(event, db) {
+  const cancelledStart = event.start instanceof Date ? event.start : event.start.toDate();
+  const studentId = event.studentId;
+
+  // 1. 취소된 레슨 삭제
+  await deleteDoc(doc(db, 'lessons', event.id));
+
+  // 2. 학생의 모든 레슨 가져오기
+  const lessonsSnapshot = await getDocs(collection(db, 'lessons'));
+  const allLessons = lessonsSnapshot.docs
+    .map(doc => ({ id: doc.id, ...doc.data() }))
+    .filter(l => l.studentId === studentId)
+    .sort((a, b) => {
+      const aStart = a.start instanceof Date ? a.start : a.start.toDate();
+      const bStart = b.start instanceof Date ? b.start : b.start.toDate();
+      return aStart - bStart;
+    });
+
+  // 학생 정보 가져오기
+  const studentSnapshot = await getDocs(collection(db, 'students'));
+  const student = studentSnapshot.docs.find(doc => doc.id === studentId)?.data();
+  const {
+    totalLessons = 4,
+    lessonTimes = [],
+    lessonDuration = 50,
+    name = '',
+    frequency = 'weekly-1',
+  } = student;
+
+  // 3. 불투명 / 반투명 분리
+  let opaqueLessons = allLessons.filter(l => !l.isSecondPackage);
+  let transparentLessons = allLessons.filter(l => l.isSecondPackage);
+
+  // 4. 패키지가 2회 이상인지 체크
+  if (totalLessons < 2) {
+    // 2회 미만이면 그냥 끝 (추가 로직 없이)
+    return;
+  }
+
+  // 5. 불투명 레슨 개수 체크 후 부족하면 반투명 당겨서 채우기
+  while (opaqueLessons.length < totalLessons && transparentLessons.length > 0) {
+    const lessonToMove = transparentLessons.shift();
+    lessonToMove.isSecondPackage = false; // 불투명으로 변경
+    opaqueLessons.push(lessonToMove);
+  }
+
+  // 6. 반투명도 부족하면 새로 생성
+  while (transparentLessons.length < totalLessons) {
+    // 새 반투명 레슨 생성 날짜 계산
+    // 마지막 반투명 레슨 날짜 가져오기 (없으면 불투명 마지막 날짜 기준)
+    const lastTransparent = transparentLessons[transparentLessons.length - 1];
+    const lastOpaque = opaqueLessons[opaqueLessons.length - 1];
+
+    let baseDate = lastTransparent
+      ? lastTransparent.start instanceof Date
+        ? lastTransparent.start
+        : lastTransparent.start.toDate()
+      : lastOpaque
+      ? lastOpaque.start instanceof Date
+        ? lastOpaque.start
+        : lastOpaque.start.toDate()
+      : new Date();
+
+    // lessonTimes 기준으로 다음 날짜 계산
+    const nextDate = getNextLessonDate(baseDate, lessonTimes, frequency);
+
+    const newStart = new Date(nextDate);
+    const newEnd = new Date(newStart);
+    newEnd.setMinutes(newEnd.getMinutes() + lessonDuration);
+
+    const newLesson = {
+      studentId: studentId,
+      title: `${name} ${opaqueLessons.length + transparentLessons.length + 1}`,
+      start: newStart,
+      end: newEnd,
+      status: 'scheduled',
+      isTrial: false,
+      isSecondPackage: true,
+      isPaid: false,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    transparentLessons.push(newLesson);
+  }
+
+  // 7. 전체 합치고 날짜 순 정렬
+  const finalLessons = [...opaqueLessons, ...transparentLessons].sort((a, b) => {
+    const aStart = a.start instanceof Date ? a.start : a.start.toDate();
+    const bStart = b.start instanceof Date ? b.start : b.start.toDate();
+    return aStart - bStart;
+  });
+
+  // 8. 회차 번호 재정렬
+  const opaqueCount = opaqueLessons.length;
+  const transparentCount = transparentLessons.length;
+  
+  // 불투명 레슨 회차 재정렬 (1, 2, 3, 4)
+  opaqueLessons.forEach((lesson, index) => {
+    const newTitle = lesson.title.replace(/\d+$/, (index + 1).toString());
+    lesson.title = newTitle;
+  });
+  
+  // 반투명 레슨 회차 재정렬 (1, 2, 3, 4)
+  transparentLessons.forEach((lesson, index) => {
+    const newTitle = lesson.title.replace(/\d+$/, (index + 1).toString());
+    lesson.title = newTitle;
+  });
+
+  // 9. DB에 업데이트
+  const batchUpdates = [];
+
+  for (const lesson of finalLessons) {
+    if (lesson.id) {
+      // 기존 레슨 업데이트
+      batchUpdates.push(
+        updateDoc(doc(db, 'lessons', lesson.id), {
+          title: lesson.title,
+          start: lesson.start,
+          end: lesson.end,
+          isSecondPackage: lesson.isSecondPackage,
+          updatedAt: new Date(),
+        }),
+      );
+    } else {
+      // 새로 생성된 반투명 레슨 추가
+      batchUpdates.push(addDoc(collection(db, 'lessons'), lesson));
+    }
+  }
+
+  await Promise.all(batchUpdates);
+}
 
 const LessonModal = ({ slot, event, students = [], onClose, onSave }) => {
   const [formData, setFormData] = useState({
@@ -24,6 +184,9 @@ const LessonModal = ({ slot, event, students = [], onClose, onSave }) => {
 
   const [startTime, setStartTime] = useState('09:00');
   const [lessonDuration, setLessonDuration] = useState(50);
+  const [selectedDay, setSelectedDay] = useState(0);
+  
+  const weekDays = ['일', '월', '화', '수', '목', '금', '토'];
 
   useEffect(() => {
     if (event) { // 수정 모드
@@ -39,10 +202,12 @@ const LessonModal = ({ slot, event, students = [], onClose, onSave }) => {
       const duration = (end.getTime() - start.getTime()) / 60000;
       setLessonDuration([30, 50, 80, 100].includes(duration) ? duration : 50);
       setStartTime(`${String(start.getHours()).padStart(2, '0')}:${String(start.getMinutes()).padStart(2, '0')}`);
+      setSelectedDay(start.getDay());
     } else if (slot) { // 생성 모드
       const start = new Date(slot.start);
       const roundedMinutes = Math.floor(start.getMinutes() / 10) * 10;
       setStartTime(`${String(start.getHours()).padStart(2, '0')}:${String(roundedMinutes).padStart(2, '0')}`);
+      setSelectedDay(start.getDay());
       // Reset form data for new lesson
       setFormData({ studentId: '', title: '', notes: '', status: 'scheduled', isPaid: false });
     }
@@ -54,6 +219,10 @@ const LessonModal = ({ slot, event, students = [], onClose, onSave }) => {
     const baseDate = event ? new Date(event.start) : new Date(slot.start);
     const [hours, minutes] = startTime.split(':');
     const finalStart = new Date(baseDate);
+    
+    // 요일 변경 시 날짜 조정
+    const dayDiff = selectedDay - finalStart.getDay();
+    finalStart.setDate(finalStart.getDate() + dayDiff);
     finalStart.setHours(parseInt(hours, 10), parseInt(minutes, 10), 0, 0);
 
     const finalEnd = new Date(finalStart.getTime() + lessonDuration * 60000);
@@ -83,13 +252,18 @@ const LessonModal = ({ slot, event, students = [], onClose, onSave }) => {
           transaction.set(newLessonRef, lessonData);
         });
       } else {
-        const lessonData = {
-          ...formData,
-          start: finalStart,
-          end: finalEnd,
-          updatedAt: new Date()
-        };
-        await updateDoc(doc(db, 'lessons', event.id), lessonData);
+        // 취소 선택 시 레슨 취소 처리
+        if (formData.status === 'cancelled') {
+          await handleLessonCancel(event, db);
+        } else {
+          const lessonData = {
+            ...formData,
+            start: finalStart,
+            end: finalEnd,
+            updatedAt: new Date()
+          };
+          await updateDoc(doc(db, 'lessons', event.id), lessonData);
+        }
       }
       onSave();
     } catch (error) {
@@ -129,6 +303,8 @@ const LessonModal = ({ slot, event, students = [], onClose, onSave }) => {
   if (baseDateForDisplay) {
     const [hours, minutes] = startTime.split(':');
     const startForDisplay = new Date(baseDateForDisplay);
+    const dayDiff = selectedDay - startForDisplay.getDay();
+    startForDisplay.setDate(startForDisplay.getDate() + dayDiff);
     startForDisplay.setHours(parseInt(hours, 10), parseInt(minutes, 10), 0, 0);
     const endForDisplay = new Date(startForDisplay.getTime() + lessonDuration * 60000);
     displayEndTime = `${String(endForDisplay.getHours()).padStart(2, '0')}:${String(endForDisplay.getMinutes()).padStart(2, '0')}`;
@@ -252,79 +428,93 @@ const LessonModal = ({ slot, event, students = [], onClose, onSave }) => {
     <div className="modal-overlay">
       <div className="modal">
         <div className="modal-header">
-          <h2>{event ? '레슨 수정' : '새 레슨 추가'}</h2>
+          <h2>{event ? '취소/변경' : '새 레슨 추가'}</h2>
           <button className="close-button" onClick={onClose}>
             <X size={20} />
           </button>
         </div>
 
         <form onSubmit={handleSubmit} className="modal-form">
-          <div className="form-group">
-            <label htmlFor="studentId">학생 *</label>
-            <select
-              id="studentId"
-              name="studentId"
-              value={formData.studentId}
-              onChange={handleStudentChange}
-              required
-            >
-              <option value="">학생을 선택하세요</option>
-              {Array.isArray(students) && students.map(student => (
-                <option key={student.id} value={student.id}>
-                  {student.name} ({student.remainingLessons || 0}회 남음)
-                </option>
-              ))}
-            </select>
-          </div>
+          {!event && (
+            <>
+              <div className="form-group">
+                <label htmlFor="studentId">학생 *</label>
+                <select
+                  id="studentId"
+                  name="studentId"
+                  value={formData.studentId}
+                  onChange={handleStudentChange}
+                  required
+                >
+                  <option value="">학생을 선택하세요</option>
+                  {Array.isArray(students) && students.map(student => (
+                    <option key={student.id} value={student.id}>
+                      {student.name} ({student.remainingLessons || 0}회 남음)
+                    </option>
+                  ))}
+                </select>
+              </div>
 
-          {selectedStudent && (
-            <div className="student-info">
-              <p><strong>레슨 타입:</strong> {selectedStudent.lessonType}</p>
-              <p><strong>남은 수업:</strong> {selectedStudent.remainingLessons || 0}회</p>
-            </div>
+              {selectedStudent && (
+                <div className="student-info">
+                  <p><strong>레슨 타입:</strong> {selectedStudent.lessonType}</p>
+                  <p><strong>남은 수업:</strong> {selectedStudent.remainingLessons || 0}회</p>
+                </div>
+              )}
+
+              <div className="form-group">
+                <label htmlFor="title">레슨 제목</label>
+                <input
+                  type="text"
+                  id="title"
+                  name="title"
+                  value={formData.title}
+                  onChange={handleChange}
+                  placeholder="레슨 제목을 입력하세요"
+                />
+              </div>
+            </>
           )}
 
-          <div className="form-group">
-            <label htmlFor="title">레슨 제목</label>
-            <input
-              type="text"
-              id="title"
-              name="title"
-              value={formData.title}
-              onChange={handleChange}
-              placeholder="레슨 제목을 입력하세요"
-            />
-          </div>
+          {event && (
+            <>
+              <div className="form-group">
+                <label htmlFor="status">취소</label>
+                <select
+                  id="status"
+                  name="status"
+                  value={formData.status}
+                  onChange={handleChange}
+                  required
+                >
+                  <option value="scheduled">--</option>
+                  <option value="cancelled">취소</option>
+                  <option value="same-day-cancel">당일캔슬</option>
+                </select>
+              </div>
+              
+              <hr style={{ margin: '20px 0', border: 'none', borderTop: '1px solid #ddd' }} />
+              
+              <h3 style={{ margin: '0 0 15px 0', fontSize: '16px', fontWeight: '600' }}>변경</h3>
+            </>
+          )}
 
-          <div className="form-group">
-            <label htmlFor="status">상태</label>
-            <select
-              id="status"
-              name="status"
-              value={formData.status}
-              onChange={handleChange}
-              required
-            >
-              <option value="scheduled">예정</option>
-              <option value="completed">완료</option>
-              <option value="cancelled">취소</option>
-            </select>
-          </div>
 
-          <div className="form-group">
-            <label>
-              <input
-                type="checkbox"
-                name="isPaid"
-                checked={formData.isPaid}
-                onChange={handleChange}
-                style={{ marginRight: '8px' }}
-              />
-              결제 확인
-            </label>
-          </div>
 
           <div className="form-row">
+            <div className="form-group">
+              <label htmlFor="selectedDay">요일</label>
+              <select
+                id="selectedDay"
+                value={selectedDay}
+                onChange={(e) => setSelectedDay(Number(e.target.value))}
+                required
+              >
+                {weekDays.map((day, index) => (
+                  <option key={index} value={index}>{day}</option>
+                ))}
+              </select>
+            </div>
             <div className="form-group">
               <label htmlFor="startTime">시작 시간</label>
               <select
@@ -383,8 +573,8 @@ const LessonModal = ({ slot, event, students = [], onClose, onSave }) => {
                 결제 완료
               </button>
             )}
-            <button type="submit" className="save-button" disabled={!formData.studentId}>
-              {event ? '수정' : '저장'}
+            <button type="submit" className="save-button" disabled={!event && !formData.studentId}>
+              {event ? '확인' : '저장'}
             </button>
           </div>
         </form>

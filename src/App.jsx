@@ -134,6 +134,19 @@ function App() {
 
   // 이벤트 스타일 설정
   const eventPropGetter = (event) => {
+    if (event.status === 'same-day-cancel') {
+      return {
+        style: {
+          backgroundColor: '#f44336', // 빨간색
+          color: 'white',
+          border: 'none',
+          borderRadius: '4px',
+          padding: '2px 4px',
+          fontSize: '12px',
+          opacity: 0.5
+        }
+      };
+    }
     if (event.isTrial) {
       return {
         style: {
