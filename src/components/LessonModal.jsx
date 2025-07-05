@@ -52,168 +52,141 @@ function getNextLessonDate(baseDate, lessonTimes, frequency) {
 
 
 
-// // lessonTimes 기준으로 다음 수업 날짜 계산 함수
-// function getNextLessonDate(baseDate, lessonTimes, frequency) {
-//   const weekInterval = frequency === 'biweekly' ? 2 : 1;
-//   const weekDays = ['일', '월', '화', '수', '목', '금', '토'];
 
-//   for (let week = 1; week <= 8; week++) {
-//     for (const lessonTime of lessonTimes) {
-//       if (!lessonTime.time) continue;
-//       const [hours, minutes] = lessonTime.time.split(':').map(Number);
-//       const dayOfWeek = weekDays.indexOf(lessonTime.day);
-
-//       const candidateDate = new Date(baseDate);
-//       candidateDate.setDate(candidateDate.getDate() + week * weekInterval * 7);
-//       candidateDate.setDate(candidateDate.getDate() - candidateDate.getDay() + dayOfWeek);
-//       candidateDate.setHours(hours, minutes, 0, 0);
-
-//       if (candidateDate > baseDate) {
-//         return candidateDate;
-//       }
-//     }
-//   }
-
-//   // fallback: 다음날
-//   const fallback = new Date(baseDate);
-//   fallback.setDate(fallback.getDate() + 1);
-//   return fallback;
-// }
 
 async function handleLessonCancel(event, db) {
-  const cancelledStart = event.start instanceof Date ? event.start : event.start.toDate();
-  const studentId = event.studentId;
+  try {
+    console.log('handleLessonCancel 시작:', event);
+    const cancelledStart = event.start instanceof Date ? event.start : event.start.toDate();
+    const studentId = event.studentId;
+    const cancelledPackageNumber = event.packageNumber || 1;
 
-  // 1. 취소된 레슨 삭제
-  await deleteDoc(doc(db, 'lessons', event.id));
+    console.log('취소 정보:', { studentId, cancelledPackageNumber });
 
-  // 2. 학생의 모든 레슨 가져오기
-  const lessonsSnapshot = await getDocs(collection(db, 'lessons'));
-  const allLessons = lessonsSnapshot.docs
-    .map(doc => ({ id: doc.id, ...doc.data() }))
-    .filter(l => l.studentId === studentId)
-    .sort((a, b) => {
-      const aStart = a.start instanceof Date ? a.start : a.start.toDate();
-      const bStart = b.start instanceof Date ? b.start : b.start.toDate();
-      return aStart - bStart;
-    });
-
-  // 학생 정보 가져오기
-  const studentSnapshot = await getDocs(collection(db, 'students'));
-  const student = studentSnapshot.docs.find(doc => doc.id === studentId)?.data();
-  const {
-    numberOfPackage = 4,
-    totalLessons = 8,
-    lessonTimes = [],
-    lessonDuration = 50,
-    name = '',
-    frequency = 'weekly-1',
-  } = student;
-
-// 3. 불투명 / 반투명 분리 (정확한 속성 비교)
-let opaqueLessons = allLessons.filter(l => l.isSecondPackage === false || l.isSecondPackage === undefined);
-let transparentLessons = allLessons.filter(l => l.isSecondPackage === true);
-
-
-  // 4. 패키지가 2회 이상인지 체크
-  if (numberOfPackage < 2) {
-    // 2회 미만이면 그냥 끝 (추가 로직 없이)
-    return;
-  }
-
-  // 5. 불투명 레슨 개수 체크 후 부족하면 반투명 당겨서 채우기
-  while (opaqueLessons.length < numberOfPackage && transparentLessons.length > 0) {
-    const lessonToMove = transparentLessons.shift();
-    lessonToMove.isSecondPackage = false; // 불투명으로 변경
-    opaqueLessons.push(lessonToMove);
-  }
-
-  // 6. 반투명도 부족하면 새로 생성
-  while (transparentLessons.length < numberOfPackage) {
-    // 새 반투명 레슨 생성 날짜 계산
-    // 마지막 반투명 레슨 날짜 가져오기 (없으면 불투명 마지막 날짜 기준)
-    const lastTransparent = transparentLessons[transparentLessons.length - 1];
-    const lastOpaque = opaqueLessons[opaqueLessons.length - 1];
-
-    let baseDate = lastTransparent
-      ? lastTransparent.start instanceof Date
-        ? lastTransparent.start
-        : lastTransparent.start.toDate()
-      : lastOpaque
-      ? lastOpaque.start instanceof Date
-        ? lastOpaque.start
-        : lastOpaque.start.toDate()
-      : new Date();
-
-    // lessonTimes 기준으로 다음 날짜 계산
-    const nextDate = getNextLessonDate(baseDate, lessonTimes, frequency);
-
-    const newStart = new Date(nextDate);
-    const newEnd = new Date(newStart);
-    newEnd.setMinutes(newEnd.getMinutes() + lessonDuration);
-
-    const newLesson = {
-      studentId: studentId,
-      title: `${name} ${(transparentLessons.length % numberOfPackage) + 1}`,
-      start: newStart,
-      end: newEnd,
-      status: 'scheduled',
-      isTrial: false,
-      isSecondPackage: true,
-      isPaid: false,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    };
-    transparentLessons.push(newLesson);
-  }
-
-  // 7. 전체 합치고 날짜 순 정렬
-  const finalLessons = [...opaqueLessons, ...transparentLessons].sort((a, b) => {
-    const aStart = a.start instanceof Date ? a.start : a.start.toDate();
-    const bStart = b.start instanceof Date ? b.start : b.start.toDate();
-    return aStart - bStart;
-  });
-
-  // 8. 불투명 레슨을 패키지별로 그룹화하여 회차 번호 재정렬
-  for (let i = 0; i < opaqueLessons.length; i += numberOfPackage) {
-    const packageLessons = opaqueLessons.slice(i, i + numberOfPackage);
-    packageLessons.forEach((lesson, index) => {
-      const newTitle = lesson.title.replace(/\d+$/, (index + 1).toString());
-      lesson.title = newTitle;
-    });
-  }
-  
-  // 반투명 레슨도 패키지별로 그룹화하여 회차 번호 재정렬
-  for (let i = 0; i < transparentLessons.length; i += numberOfPackage) {
-    const packageLessons = transparentLessons.slice(i, i + numberOfPackage);
-    packageLessons.forEach((lesson, index) => {
-      const newTitle = lesson.title.replace(/\d+$/, (index + 1).toString());
-      lesson.title = newTitle;
-    });
-  }
-
-  // 9. DB에 업데이트
-  const batchUpdates = [];
-
-  for (const lesson of finalLessons) {
-    if (lesson.id) {
-      // 기존 레슨 업데이트
-      batchUpdates.push(
-        updateDoc(doc(db, 'lessons', lesson.id), {
-          title: lesson.title,
-          start: lesson.start,
-          end: lesson.end,
-          isSecondPackage: lesson.isSecondPackage,
-          updatedAt: new Date(),
-        }),
-      );
-    } else {
-      // 새로 생성된 반투명 레슨 추가
-      batchUpdates.push(addDoc(collection(db, 'lessons'), lesson));
+    // 학생 정보 가져오기
+    const studentSnapshot = await getDocs(collection(db, 'students'));
+    const student = studentSnapshot.docs.find(doc => doc.id === studentId)?.data();
+    console.log('학생 정보:', student);
+    
+    if (!student) {
+      console.error('학생 정보를 찾을 수 없습니다.');
+      return;
     }
-  }
+    
+    const {
+      numberOfPackage = 4,
+      lessonTimes = [],
+      lessonDuration = 50,
+      name = '',
+      frequency = 'weekly-1',
+    } = student;
 
-  await Promise.all(batchUpdates);
+    // 1. 모든 레슨 가져오기
+    const lessonsSnapshot = await getDocs(collection(db, 'lessons'));
+    const allLessons = lessonsSnapshot.docs
+      .map(doc => ({ id: doc.id, ...doc.data() }))
+      .filter(l => l.studentId === studentId)
+      .sort((a, b) => {
+        const aStart = a.start instanceof Date ? a.start : a.start.toDate();
+        const bStart = b.start instanceof Date ? b.start : b.start.toDate();
+        return aStart - bStart;
+      });
+    
+    // 2. 취소된 레슨 삭제
+    console.log('레슨 삭제 시작:', event.id);
+    await deleteDoc(doc(db, 'lessons', event.id));
+    console.log('레슨 삭제 완료');
+    
+    // 3. 해당 패키지의 레슨들 필터링 (취소된 레슨 제외)
+    let packageLessons = allLessons
+      .filter(l => l.packageNumber === cancelledPackageNumber && l.id !== event.id)
+      .sort((a, b) => {
+        const aStart = a.start instanceof Date ? a.start : a.start.toDate();
+        const bStart = b.start instanceof Date ? b.start : b.start.toDate();
+        return aStart - bStart;
+      });
+    
+    console.log('패키지 레슨들:', packageLessons.length, '개');
+    console.log('필요한 레슨 수:', numberOfPackage);
+
+    // 4. 취소된 레슨 날짜를 기준으로 설정
+    let baseDate = new Date(cancelledStart);
+    console.log('취소된 레슨 날짜:', baseDate);
+    console.log('취소된 레슨 날짜 (7월 21일이어야 함):', baseDate.getMonth() + 1, '월', baseDate.getDate(), '일');
+
+    // 5. 부족한 레슨 생성
+    console.log('레슨 생성 시작. 현재:', packageLessons.length, '필요:', numberOfPackage);
+    
+    // 새로 생성할 레슨들을 별도 배열로 관리
+    const newLessons = [];
+    while (packageLessons.length + newLessons.length < numberOfPackage) {
+      console.log('새 레슨 생성 중...', packageLessons.length + newLessons.length + 1, '번째');
+      const nextDate = getNextLessonDate(baseDate, lessonTimes, frequency);
+      console.log('다음 레슨 날짜:', nextDate);
+      
+      const newStart = new Date(nextDate);
+      const newEnd = new Date(newStart);
+      newEnd.setMinutes(newEnd.getMinutes() + lessonDuration);
+
+      const newLesson = {
+        studentId: studentId,
+        title: `${name} ${packageLessons.length + newLessons.length + 1}`,
+        start: newStart,
+        end: newEnd,
+        status: 'scheduled',
+        isTrial: false,
+        isSecondPackage: cancelledPackageNumber > 1,
+        isPaid: false,
+        packageNumber: cancelledPackageNumber,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+      
+      newLessons.push(newLesson);
+      baseDate = newStart; // 다음 레슨 계산을 위한 기준 날짜 업데이트
+    }
+    
+    // 기존 레슨과 새 레슨 합치기
+    packageLessons = [...packageLessons, ...newLessons];
+    console.log('레슨 생성 완료. 총:', packageLessons.length, '개 (기존:', packageLessons.length - newLessons.length, ', 새로생성:', newLessons.length, ')');
+
+    // 6. 회차 번호 재정렬
+    packageLessons.forEach((lesson, index) => {
+      const oldTitle = lesson.title;
+      const newTitle = lesson.title.replace(/\d+$/, (index + 1).toString());
+      lesson.title = newTitle;
+      console.log(`회차 ${index + 1}: ${oldTitle} -> ${newTitle}`);
+    });
+    console.log('회차 번호 재정렬 완료');
+
+    // 7. DB 업데이트
+    const batchUpdates = [];
+    for (const lesson of packageLessons) {
+      if (lesson.id) {
+        // 기존 레슨 업데이트
+        batchUpdates.push(
+          updateDoc(doc(db, 'lessons', lesson.id), {
+            title: lesson.title,
+            start: lesson.start,
+            end: lesson.end,
+            updatedAt: new Date(),
+          })
+        );
+      } else {
+        // 새 레슨 추가
+        batchUpdates.push(addDoc(collection(db, 'lessons'), lesson));
+      }
+    }
+    console.log('DB 업데이트 시작. 배치 작업 수:', batchUpdates.length);
+    if (batchUpdates.length > 0) {
+      await Promise.all(batchUpdates);
+    }
+    console.log('DB 업데이트 완료');
+  } catch (error) {
+    console.error('handleLessonCancel 에러:', error);
+    alert('취소 처리 중 오류가 발생했습니다: ' + error.message);
+    throw error;
+  }
 }
 
 const LessonModal = ({ slot, event, students = [], onClose, onSave }) => {
@@ -306,8 +279,10 @@ const LessonModal = ({ slot, event, students = [], onClose, onSave }) => {
         });
       } else {
         // 취소 선택 시 레슨 취소 처리
-        if (formData.status === 'cancelled') {
+        if (formData.status === 'cancelled' || formData.status === 'same-day-cancel') {
+          console.log('취소 처리 시작:', event);
           await handleLessonCancel(event, db);
+          console.log('취소 처리 완료');
         } else {
           const lessonData = {
             ...formData,
@@ -450,6 +425,9 @@ const LessonModal = ({ slot, event, students = [], onClose, onSave }) => {
           const endDate = new Date(startDate);
           endDate.setMinutes(startDate.getMinutes() + lessonDuration);
           
+          // 다음 패키지 번호 계산 (기존 최대 packageNumber + 1)
+          const nextPackageNumber = Math.max(...allLessons.map(l => l.packageNumber || 1)) + 1;
+          
           const newLesson = {
             studentId: event.studentId,
             title: `${name} ${created + 1}`,
@@ -459,6 +437,7 @@ const LessonModal = ({ slot, event, students = [], onClose, onSave }) => {
             isTrial: false,
             isSecondPackage: true,
             isPaid: false,
+            packageNumber: nextPackageNumber,
             createdAt: new Date(),
             updatedAt: new Date()
           };

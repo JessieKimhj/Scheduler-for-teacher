@@ -162,6 +162,7 @@ const StudentModal = ({ student, onClose, onSave }) => {
         status: 'scheduled',
         isTrial: false,
         isSecondPackage: false,
+        packageNumber: 1, // 첫 번째 패키지
         createdAt: new Date(),
         updatedAt: new Date()
       });
@@ -213,6 +214,7 @@ const StudentModal = ({ student, onClose, onSave }) => {
           status: 'scheduled',
           isTrial: false,
           isSecondPackage: true,
+          packageNumber: 2, // 두 번째 패키지
           createdAt: new Date(),
           updatedAt: new Date()
         });
